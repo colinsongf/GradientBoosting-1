@@ -19,3 +19,13 @@
 *.exe
 *.out
 *.app
+
+# VS files
+Debug
+Release
+*.sdf
+*.sln
+*.vcxproj
+*.vcxproj.filters
+*.opensdf
+*.v11.suo
