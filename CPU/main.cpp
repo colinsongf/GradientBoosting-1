@@ -4,6 +4,8 @@
 #include <fstream>
 #include <algorithm>
 
+#include "tree.h"
+
 using namespace std;
 
 int main()
@@ -24,6 +26,8 @@ int main()
 		}
 		train_set.push_back(make_pair(ans, test));
 	}
+
+	tree t(train_set, 16);
 	
 	return 0;
 }
