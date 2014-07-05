@@ -14,6 +14,7 @@ struct node
 	double output_value;
 	double sum;
 	double size;
+	bool is_terminal;
 	std::vector<std::pair<double, std::vector<double> > >::iterator b;
 	std::vector<std::pair<double, std::vector<double> > >::iterator e;
 };

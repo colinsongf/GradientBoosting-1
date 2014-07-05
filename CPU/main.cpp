@@ -27,7 +27,8 @@ int main()
 		train_set.push_back(make_pair(ans, test));
 	}
 
-	tree t(train_set, 16);
+	tree t(train_set, 1024);
+	cout << "finish!\n";
 	
 	return 0;
 }
