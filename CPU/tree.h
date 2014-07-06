@@ -5,11 +5,11 @@
 
 struct node
 {
-	node(int depth);
+	node(int level);
 	void calc_avg();
 	node* left;
 	node* right;
-	int depth;
+	int level;
 	double split_value;
 	double output_value;
 	double sum;
@@ -23,6 +23,7 @@ class tree
 {
 public:
 	tree(std::vector<std::pair<double, std::vector<double> > >& train_set, int max_terminal_nodes);
+	double calculate(std::pair<double, std::vector<double> >& test);
 private:
 	double split_node(node* n, int feature);
 	void make_level(int level);

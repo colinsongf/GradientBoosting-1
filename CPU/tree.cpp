@@ -20,7 +20,7 @@ double calc_error(std::vector<std::pair<double, std::vector<double> > >::iterato
 }
 
 
-node::node(int depth) : depth(depth)
+node::node(int level) : level(level)
 {
 	left = right = NULL;
 	is_terminal = false;
@@ -94,8 +94,8 @@ void tree::make_level(int old_level)
 	{
 		if (!levels[old_level][i]->is_terminal)
 		{
-			node* l = new node(levels[old_level][i]->depth + 1);
-			node* r = new node(levels[old_level][i]->depth + 1);
+			node* l = new node(levels[old_level][i]->level + 1);
+			node* r = new node(levels[old_level][i]->level + 1);
 			levels[old_level][i]->left = l;
 			levels[old_level][i]->right = r;
 			new_level.push_back(l);
@@ -127,7 +127,7 @@ tree::tree(std::vector<std::pair<double, std::vector<double> > >& train_set, int
 	layer.push_back(root);
 	levels.push_back(layer);
 	double min_error = INF;
-	while (terminal_nodes < max_terminal_nodes && !features.empty())
+	while (terminal_nodes < max_terminal_nodes && !features.empty()) //TODO: fix min_error
 	{
 		int best_feature = -1;
 		make_level(level);
@@ -153,6 +153,7 @@ tree::tree(std::vector<std::pair<double, std::vector<double> > >& train_set, int
 			//TODO: GC
 			break;
 		}
+		feature_id_at_level.push_back(best_feature);
 		for (size_t i = 0; i < levels[level].size(); i++)
 		{
 			split_node(levels[level][i], best_feature);
@@ -161,4 +162,14 @@ tree::tree(std::vector<std::pair<double, std::vector<double> > >& train_set, int
 		level++;
 		std::cout << "level " << level << " created. training error: " << min_error << std::endl;
 	}
+}
+
+double tree::calculate(std::pair<double, std::vector<double> >& test)
+{
+	node* cur = root;
+	while (!cur->is_terminal)
+	{
+		cur = test.second[feature_id_at_level[cur->level]] < cur->split_value ? cur->left : cur->right;
+	}
+	return cur->output_value;
 }
