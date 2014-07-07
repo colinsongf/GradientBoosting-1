@@ -3,6 +3,9 @@
 
 #include <vector>
 
+#include "data_set.h"
+#include "test.h"
+
 struct node
 {
 	node(int level);
@@ -15,15 +18,15 @@ struct node
 	double sum;
 	double size;
 	bool is_terminal;
-	std::vector<std::pair<double, std::vector<double> > >::iterator b;
-	std::vector<std::pair<double, std::vector<double> > >::iterator e;
+	data_set::iterator data_begin;
+	data_set::iterator data_end;
 };
 
 class tree
 {
 public:
-	tree(std::vector<std::pair<double, std::vector<double> > >& train_set, int max_terminal_nodes);
-	double calculate(std::pair<double, std::vector<double> >& test);
+	tree(data_set& train_set, int max_terminal_nodes);
+	double calculate(test const& _test);
 private:
 	double split_node(node* n, int feature);
 	void make_level(int level);
@@ -33,5 +36,4 @@ private:
 	std::vector<int> feature_id_at_level; 
 	std::vector<std::vector<node*>> levels;
 };
-	
 #endif // TREE_H

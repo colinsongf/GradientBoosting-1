@@ -2,16 +2,14 @@
 #include <algorithm>
 #include <iostream>
 
-
 #include "tree.h"
 
 #define INF 1e10;
 
-double calc_error(std::vector<std::pair<double, std::vector<double> > >::iterator b,
-				  std::vector<std::pair<double, std::vector<double> > >::iterator e, double avg, double n)
+double calc_error(data_set::iterator data_begin, data_set::iterator data_end, double avg, double n)
 {
 	double ans = 0;
-	for (std::vector<std::pair<double, std::vector<double> > >::iterator it = b; it != e; it++)
+	for (data_set::iterator it = data_begin; it != data_end; it++)
 	{
 		ans += ((it->first - avg) * (it->first - avg));
 	}
@@ -30,7 +28,7 @@ void node::calc_avg()
 {
 	sum = 0;
 	size = 0;
-	for (std::vector<std::pair<double, std::vector<double> > >::iterator it = b; it != e; it++)
+	for (data_set::iterator it = data_begin; it != data_end; it++)
 	{
 		size++;
 		sum += it->first;
@@ -42,9 +40,9 @@ double tree::split_node(node* n, int feature)
 {
 	if (n->is_terminal)
 	{
-		return calc_error(n->b, n->e, n->output_value, n->size);
+		return calc_error(n->data_begin, n->data_end, n->output_value, n->size);
 	}
-	std::sort(n->b, n->e, [&feature](std::pair<double, std::vector<double> > p1, std::pair<double, std::vector<double> > p2)
+	std::sort(n->data_begin, n->data_end, [&feature](std::pair<double, std::vector<double> > p1, std::pair<double, std::vector<double> > p2)
 	{
 		return p1.second[feature] < p2.second[feature];
 	});
@@ -53,7 +51,7 @@ double tree::split_node(node* n, int feature)
 	double r_sum = n->sum;
 	double r_size = n->size;
 	double best_sum = INF; 
-	for (std::vector<std::pair<double, std::vector<double> > >::iterator it = n->b + 1; it != n->e; it++)
+	for (data_set::iterator it = n->data_begin + 1; it != n->data_end; it++)
 	{
 		l_sum += (it - 1)->first;
 		l_size++;
@@ -65,19 +63,19 @@ double tree::split_node(node* n, int feature)
 		}
 		double l_avg = l_sum / l_size;
 		double r_avg = r_sum / r_size;
-		double cur_sum = calc_error(n->b, it, l_avg, l_size) + calc_error(it, n->e, r_avg, r_size);
+		double cur_sum = calc_error(n->data_begin, it, l_avg, l_size) + calc_error(it, n->data_end, r_avg, r_size);
 		if (cur_sum < best_sum)
 		{
 			best_sum = cur_sum;
 			n->split_value = it->second[feature];
-			n->left->b = n->b;
-			n->left->e = it;
+			n->left->data_begin = n->data_begin;
+			n->left->data_end = it;
 			n->left->output_value = l_avg;
 			n->left->size = l_size;
 			n->left->sum = l_sum;
 			n->left->is_terminal = (l_size == 1) ? true : false;
-			n->right->b = it;
-			n->right->e = n->e;
+			n->right->data_begin = it;
+			n->right->data_end = n->data_end;
 			n->right->output_value = r_avg;
 			n->right->size = r_size;
 			n->right->sum = r_sum;
@@ -109,7 +107,7 @@ void tree::make_level(int old_level)
 	}
 }
 
-tree::tree(std::vector<std::pair<double, std::vector<double> > >& train_set, int max_terminal_nodes)
+tree::tree(data_set& train_set, int max_terminal_nodes)
 	: max_terminal_nodes(max_terminal_nodes)
 {
 	std::set<int> features;
@@ -120,15 +118,15 @@ tree::tree(std::vector<std::pair<double, std::vector<double> > >& train_set, int
 	terminal_nodes = 1;
 	int level = 0;
 	root = new node(0);
-	root->b = train_set.begin();
-	root->e = train_set.end();
+	root->data_begin = train_set.begin();
+	root->data_end = train_set.end();
 	root->calc_avg();
 	std::vector<node*> layer;
 	layer.push_back(root);
 	levels.push_back(layer);
-	double min_error = INF;
 	while (terminal_nodes < max_terminal_nodes && !features.empty()) //TODO: fix min_error
 	{
+		double min_error = INF;
 		int best_feature = -1;
 		make_level(level);
 		for (std::set<int>::iterator it = features.begin(); it != features.end(); it++)
@@ -144,32 +142,27 @@ tree::tree(std::vector<std::pair<double, std::vector<double> > >& train_set, int
 				best_feature = *it;
 			}
 		}
-		if (best_feature == -1)
-		{
-			for (size_t i = 0; i < levels[level].size(); i++)
-			{
-				levels[level][i]->is_terminal = true;
-			}
-			//TODO: GC
-			break;
-		}
-		feature_id_at_level.push_back(best_feature);
 		for (size_t i = 0; i < levels[level].size(); i++)
 		{
 			split_node(levels[level][i], best_feature);
 		}
+		feature_id_at_level.push_back(best_feature);
 		features.erase(best_feature);
 		level++;
 		std::cout << "level " << level << " created. training error: " << min_error << std::endl;
 	}
+	for (size_t i = 0; i < levels.back().size(); i++)
+	{
+		levels.back()[i]->is_terminal = true;
+	}
 }
 
-double tree::calculate(std::pair<double, std::vector<double> >& test)
+double tree::calculate(test const& _test)
 {
 	node* cur = root;
 	while (!cur->is_terminal)
 	{
-		cur = test.second[feature_id_at_level[cur->level]] < cur->split_value ? cur->left : cur->right;
+		cur = _test.get_feature(feature_id_at_level[cur->level]) < cur->split_value ? cur->left : cur->right;
 	}
 	return cur->output_value;
 }
