@@ -7,7 +7,7 @@ class test
 {
 public:
 	test(std::vector<double> const& features);
-	double get_feature(int index) const;
+	double operator[](int index) const;
 private:
 	std::vector<double> features;
 };

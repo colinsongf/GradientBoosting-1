@@ -35,3 +35,8 @@ data_set::iterator data_set::end()
 {
 	return data.end();
 }
+
+int data_set::size()
+{
+	return data.size();
+}

@@ -26,7 +26,8 @@ class tree
 {
 public:
 	tree(data_set& train_set, int max_terminal_nodes);
-	double calculate(test const& _test);
+	double calculate(test& _test);
+	double calculate(data_set& test_set);
 private:
 	double split_node(node* n, int feature);
 	void make_level(int level);

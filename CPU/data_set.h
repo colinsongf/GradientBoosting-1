@@ -12,6 +12,7 @@ public:
 	std::pair<double, std::vector<double> >& operator[](int index);
 	iterator begin();
 	iterator end();
+	int size();
 private:
 	std::vector<std::pair<double, std::vector<double> > > data;
 };

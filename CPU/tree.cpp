@@ -124,7 +124,7 @@ tree::tree(data_set& train_set, int max_terminal_nodes)
 	std::vector<node*> layer;
 	layer.push_back(root);
 	levels.push_back(layer);
-	while (terminal_nodes < max_terminal_nodes && !features.empty()) //TODO: fix min_error
+	while (terminal_nodes < max_terminal_nodes && !features.empty())
 	{
 		double min_error = INF;
 		int best_feature = -1;
@@ -157,12 +157,24 @@ tree::tree(data_set& train_set, int max_terminal_nodes)
 	}
 }
 
-double tree::calculate(test const& _test)
+double tree::calculate(test& _test)
 {
 	node* cur = root;
 	while (!cur->is_terminal)
 	{
-		cur = _test.get_feature(feature_id_at_level[cur->level]) < cur->split_value ? cur->left : cur->right;
+		cur = _test[feature_id_at_level[cur->level]] < cur->split_value ? cur->left : cur->right;
 	}
 	return cur->output_value;
+}
+
+double tree::calculate(data_set& test_set)
+{
+	double error = 0;
+	for (data_set::iterator it = test_set.begin(); it != test_set.end(); it++)
+	{
+		double ans = calculate(test(it->second));
+		error += ((ans - it->first) * (ans - it->first));
+	}
+	error /= (1.0 * test_set.size());
+	return error;
 }
