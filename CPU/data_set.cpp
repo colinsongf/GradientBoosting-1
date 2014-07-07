@@ -18,25 +18,26 @@ data_set::data_set(std::string file_name)
 		{
 			features.push_back(value);
 		}
-		data.push_back(make_pair(ans, features));
+		tests.push_back(test(features, ans));
 	}
 }
 
-std::pair<double, std::vector<double> >& data_set::operator[](int index)
+test& data_set::operator[](size_t index)
 {
-	return data[index];
+	return tests[index];
 }
 
 data_set::iterator data_set::begin()
 {
-	return data.begin();
-}
-data_set::iterator data_set::end()
-{
-	return data.end();
+	return tests.begin();
 }
 
-int data_set::size()
+data_set::iterator data_set::end()
 {
-	return data.size();
+	return tests.end();
+}
+
+size_t data_set::size()
+{
+	return tests.size();
 }

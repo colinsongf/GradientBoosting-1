@@ -3,12 +3,10 @@
 
 #include <vector>
 
-class test
+struct test
 {
-public:
-	test(std::vector<double> const& features);
-	double operator[](int index) const;
-private:
+	test(std::vector<double> const& features, double anwser = 0.0);
 	std::vector<double> features;
+	double anwser;
 };
 #endif // TEST_H

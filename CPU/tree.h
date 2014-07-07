@@ -2,22 +2,22 @@
 #define TREE_H
 
 #include <vector>
-
 #include "data_set.h"
 #include "test.h"
 
 struct node
 {
-	node(int level);
+	node(int depth);
 	void calc_avg();
+	double split(int split_feature_id);
 	node* left;
 	node* right;
-	int level;
+	int depth;
 	double split_value;
 	double output_value;
 	double sum;
 	double size;
-	bool is_terminal;
+	bool is_leaf;
 	data_set::iterator data_begin;
 	data_set::iterator data_end;
 };
@@ -25,16 +25,15 @@ struct node
 class tree
 {
 public:
-	tree(data_set& train_set, int max_terminal_nodes);
-	double calculate(test& _test);
-	double calculate(data_set& test_set);
+	tree(data_set& train_set, int max_leafs);
+	double calculate_anwser(test& _test);
+	double calculate_error(data_set& test_set);
 private:
-	double split_node(node* n, int feature);
-	void make_level(int level);
-	int max_terminal_nodes;
-	int terminal_nodes;
+	void make_layer(int depth);
+	int max_leafs;
+	int leafs;
 	node* root;
-	std::vector<int> feature_id_at_level; 
-	std::vector<std::vector<node*>> levels;
+	std::vector<int> feature_id_at_depth; 
+	std::vector<std::vector<node*>> layers;
 };
 #endif // TREE_H
