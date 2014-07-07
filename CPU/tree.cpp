@@ -5,7 +5,7 @@
 
 #define INF 1e10;
 
-double calc_error(data_set::iterator data_begin, data_set::iterator data_end, double avg, double n)
+double calc_mse(data_set::iterator data_begin, data_set::iterator data_end, double avg, double n)
 {
 	double ans = 0;
 	for (data_set::iterator cur_test = data_begin; cur_test != data_end; cur_test++)
@@ -38,7 +38,7 @@ double node::split(int split_feature_id)
 {
 	if (is_leaf)
 	{
-		return calc_error(data_begin, data_end, output_value, size);
+		return calc_mse(data_begin, data_end, output_value, size);
 	}
 	std::sort(data_begin, data_end, [&split_feature_id](test t1, test t2)
 	{
@@ -49,7 +49,7 @@ double node::split(int split_feature_id)
 	double r_sum = sum;
 	double r_size = size;
 	double best_sum = INF; 
-	for (data_set::iterator cur_test = data_begin + 1; cur_test != data_end; cur_test++)
+	for (data_set::iterator cur_test = data_begin + 1; cur_test != data_end; cur_test++) //try all possible splits
 	{
 		l_sum += (cur_test - 1)->anwser;
 		l_size++;
@@ -61,7 +61,7 @@ double node::split(int split_feature_id)
 		}
 		double l_avg = l_sum / l_size;
 		double r_avg = r_sum / r_size;
-		double cur_sum = calc_error(data_begin, cur_test, l_avg, l_size) + calc_error(cur_test, data_end, r_avg, r_size);
+		double cur_sum = calc_mse(data_begin, cur_test, l_avg, l_size) + calc_mse(cur_test, data_end, r_avg, r_size);
 		if (cur_sum < best_sum)
 		{
 			best_sum = cur_sum;
@@ -83,17 +83,17 @@ double node::split(int split_feature_id)
 	return best_sum;
 }
 
-void tree::make_layer(int old_level)
+void tree::make_layer(int depth)
 {
 	std::vector<node*> new_level;
-	for (size_t i = 0; i < layers[old_level].size(); i++)
+	for (size_t i = 0; i < layers[depth].size(); i++) //make children for non-leaf nodes at current depth
 	{
-		if (!layers[old_level][i]->is_leaf)
+		if (!layers[depth][i]->is_leaf)
 		{
-			node* l = new node(layers[old_level][i]->depth + 1);
-			node* r = new node(layers[old_level][i]->depth + 1);
-			layers[old_level][i]->left = l;
-			layers[old_level][i]->right = r;
+			node* l = new node(layers[depth][i]->depth + 1);
+			node* r = new node(layers[depth][i]->depth + 1);
+			layers[depth][i]->left = l;
+			layers[depth][i]->right = r;
 			new_level.push_back(l);
 			new_level.push_back(r);
 			leafs++;
@@ -128,6 +128,7 @@ tree::tree(data_set& train_set, int max_leafs)
 		int best_feature = -1;
 		make_layer(depth);
 		for (std::set<int>::iterator cur_split_feature = features.begin(); cur_split_feature != features.end(); cur_split_feature++)
+		//choose best split feature at current depth
 		{
 			double cur_error = 0;
 			for (size_t i = 0; i < layers[depth].size(); i++)
