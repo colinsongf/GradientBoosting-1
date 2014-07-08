@@ -48,7 +48,7 @@ double node::split(int split_feature_id)
 	double l_size = 0;
 	double r_sum = sum;
 	double r_size = size;
-	double best_sum = INF; 
+	double best_mse = INF; 
 	for (data_set::iterator cur_test = data_begin + 1; cur_test != data_end; cur_test++) //try all possible splits
 	{
 		l_sum += (cur_test - 1)->anwser;
@@ -61,52 +61,33 @@ double node::split(int split_feature_id)
 		}
 		double l_avg = l_sum / l_size;
 		double r_avg = r_sum / r_size;
-		double cur_sum = calc_mse(data_begin, cur_test, l_avg, l_size) + calc_mse(cur_test, data_end, r_avg, r_size);
-		if (cur_sum < best_sum)
+		double l_mse = calc_mse(data_begin, cur_test, l_avg, l_size);
+		double r_mse = calc_mse(cur_test, data_end, r_avg, r_size);
+		double cur_mse = l_mse + r_mse;
+		if (cur_mse < best_mse)
 		{
-			best_sum = cur_sum;
+			best_mse = cur_mse;
 			split_value = cur_test->features[split_feature_id];
 			left->data_begin = data_begin;
 			left->data_end = cur_test;
 			left->output_value = l_avg;
 			left->size = l_size;
 			left->sum = l_sum;
+			left->node_mse = l_mse;
 			left->is_leaf = (l_size == 1) ? true : false;
 			right->data_begin = cur_test;
 			right->data_end = data_end;
 			right->output_value = r_avg;
 			right->size = r_size;
 			right->sum = r_sum;
+			right->node_mse = r_mse;
 			right->is_leaf = (r_size == 1) ? true : false;
 		}
 	}
-	return best_sum;
+	return best_mse;
 }
 
-void tree::make_layer(int depth)
-{
-	std::vector<node*> new_level;
-	for (size_t i = 0; i < layers[depth].size(); i++) //make children for non-leaf nodes at current depth
-	{
-		if (!layers[depth][i]->is_leaf)
-		{
-			node* l = new node(layers[depth][i]->depth + 1);
-			node* r = new node(layers[depth][i]->depth + 1);
-			layers[depth][i]->left = l;
-			layers[depth][i]->right = r;
-			new_level.push_back(l);
-			new_level.push_back(r);
-			leafs++;
-		}
-	}
-	if (!new_level.empty())
-	{
-		layers.push_back(new_level);
-	}
-}
-
-tree::tree(data_set& train_set, int max_leafs)
-	: max_leafs(max_leafs)
+tree::tree(data_set& train_set, int max_leafs) : max_leafs(max_leafs)
 {
 	std::set<int> features;
 	for (size_t i = 0; i < train_set[0].features.size(); i++)
@@ -119,6 +100,7 @@ tree::tree(data_set& train_set, int max_leafs)
 	root->data_begin = train_set.begin();
 	root->data_end = train_set.end();
 	root->calc_avg();
+	root->node_mse = calc_mse(root->data_begin, root->data_end, root->output_value, root->size);
 	std::vector<node*> layer;
 	layer.push_back(root);
 	layers.push_back(layer);
@@ -154,6 +136,14 @@ tree::tree(data_set& train_set, int max_leafs)
 	{
 		layers.back()[i]->is_leaf = true;
 	}
+	std::cout << "leafs before pruning: " << leafs << std::endl;
+	prune(root);
+	std::cout << "leafs after pruning: " << leafs << std::endl;
+}
+
+tree::~tree()
+{
+	delete_node(root);
 }
 
 double tree::calculate_anwser(test& _test)
@@ -176,4 +166,78 @@ double tree::calculate_error(data_set& test_set)
 	}
 	error /= (1.0 * test_set.size());
 	return error;
+}
+
+void tree::delete_node(node* n)
+{
+	if (n == NULL)
+	{
+		return;
+	}
+	layers[n->depth].erase(std::find(layers[n->depth].begin(), layers[n->depth].end(), n));
+	delete_node(n->left);
+	delete_node(n->right);
+	leafs--;
+	delete n;
+}
+
+void tree::make_layer(int depth)
+{
+	std::vector<node*> new_level;
+	for (size_t i = 0; i < layers[depth].size(); i++) //make children for non-leaf nodes at current depth
+	{
+		if (!layers[depth][i]->is_leaf)
+		{
+			node* l = new node(layers[depth][i]->depth + 1);
+			node* r = new node(layers[depth][i]->depth + 1);
+			layers[depth][i]->left = l;
+			layers[depth][i]->right = r;
+			new_level.push_back(l);
+			new_level.push_back(r);
+			leafs++;
+		}
+	}
+	if (!new_level.empty())
+	{
+		layers.push_back(new_level);
+	}
+}
+
+void tree::prune(node* n)
+{
+	if (!n->is_leaf)
+	{
+		calc_subtree_mse(n->left);
+		calc_subtree_mse(n->right);
+		if (n->node_mse <= n->left->subtree_mse + n->right->subtree_mse)
+		{
+			n->is_leaf = true;
+			delete_node(n->left);
+			delete_node(n->right);
+			n->left = NULL;
+			n->right = NULL;
+		}
+		else
+		{
+			prune(n->left);
+			prune(n->right);
+		}
+	}
+}
+
+void tree::calc_subtree_mse(node* n)
+{
+	double error = 0;
+	for (data_set::iterator cur_test = n->data_begin; cur_test != n->data_end; cur_test++)
+	{
+		node* cur_node = n;
+		while (!cur_node->is_leaf)
+		{
+			cur_node = cur_test->features[feature_id_at_depth[cur_node->depth]] < cur_node->split_value ? cur_node->left : cur_node->right;
+		}
+		double ans = cur_node->output_value;
+		error += ((ans - cur_test->anwser) * (ans - cur_test->anwser));
+	}
+	error /= (1.0 * n->size);
+	n->subtree_mse = error;
 }

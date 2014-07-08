@@ -17,6 +17,8 @@ struct node
 	double output_value;
 	double sum;
 	double size;
+	double node_mse;
+	double subtree_mse;
 	bool is_leaf;
 	data_set::iterator data_begin;
 	data_set::iterator data_end;
@@ -26,10 +28,14 @@ class tree
 {
 public:
 	tree(data_set& train_set, int max_leafs);
+	~tree();
 	double calculate_anwser(test& _test);
 	double calculate_error(data_set& test_set);
 private:
+	void delete_node(node* n);
 	void make_layer(int depth);
+	void prune(node* n);
+	void calc_subtree_mse(node* n);
 	int max_leafs;
 	int leafs;
 	node* root;
