@@ -31,11 +31,13 @@ public:
 	~tree();
 	double calculate_anwser(test& _test);
 	double calculate_error(data_set& test_set);
+	void print();
 private:
 	void delete_node(node* n);
 	void make_layer(int depth);
 	void prune(node* n);
 	void calc_subtree_mse(node* n);
+	void print(node* n);
 	int max_leafs;
 	int leafs;
 	node* root;

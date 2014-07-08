@@ -168,6 +168,13 @@ double tree::calculate_error(data_set& test_set)
 	return error;
 }
 
+void tree::print()
+{
+	std::cout << "************TREE (DFS pre-order)**************" << std::endl;
+	print(root);
+	std::cout << "**********************************************" << std::endl;
+}
+
 void tree::delete_node(node* n)
 {
 	if (n == NULL)
@@ -177,7 +184,10 @@ void tree::delete_node(node* n)
 	layers[n->depth].erase(std::find(layers[n->depth].begin(), layers[n->depth].end(), n));
 	delete_node(n->left);
 	delete_node(n->right);
-	leafs--;
+	if(n->is_leaf)
+	{
+		leafs--;
+	}
 	delete n;
 }
 
@@ -212,6 +222,7 @@ void tree::prune(node* n)
 		if (n->node_mse <= n->left->subtree_mse + n->right->subtree_mse)
 		{
 			n->is_leaf = true;
+			leafs++;
 			delete_node(n->left);
 			delete_node(n->right);
 			n->left = NULL;
@@ -240,4 +251,23 @@ void tree::calc_subtree_mse(node* n)
 	}
 	error /= (1.0 * n->size);
 	n->subtree_mse = error;
+}
+
+void tree::print(node* n)
+{
+	for (int i = 0; i < n->depth; i++)
+	{
+		std::cout << "-";
+	}
+	if (n->is_leaf)
+	{
+		std::cout << "leaf. output value: " << n->output_value << std::endl;
+	}
+	else
+	{
+		std::cout << "split feature: " << feature_id_at_depth[n->depth] << "; ";
+		std::cout << "split value: " << n->split_value << std::endl;
+		print(n->left);
+		print(n->right);
+	}
 }

@@ -12,5 +12,6 @@ int main()
 	data_set test_set("wine-test.txt");
 	double error = t.calculate_error(test_set);
 	std::cout << "test error: " << error << std::endl;
+	//t.print();
 	return 0;
 }
