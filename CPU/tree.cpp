@@ -16,6 +16,21 @@ double calc_mse(data_set::iterator data_begin, data_set::iterator data_end, doub
 	return ans;
 }
 
+node::node(const node& other) : data_begin(other.data_begin), data_end(other.data_end), depth(other.depth), is_leaf(other.is_leaf),
+	node_mse(other.node_mse), output_value(other.output_value), size(other.size), split_value(other.split_value),
+	subtree_mse(other.subtree_mse), sum(other.sum)
+{
+	if (!is_leaf)
+	{
+		left = new node(*other.left);
+		right = new node(*other.right);
+	}
+	else
+	{
+		left = right = NULL;
+	}
+}
+
 node::node(int depth) : depth(depth)
 {
 	left = right = NULL;
@@ -87,6 +102,16 @@ double node::split(int split_feature_id)
 	return best_mse;
 }
 
+tree::tree(const tree& other) : feature_id_at_depth(other.feature_id_at_depth), leafs(other.leafs), max_leafs(other.max_leafs)
+{
+	root = new node(*other.root);
+	layers.resize(feature_id_at_depth.size() + 1);
+	if (!layers.empty())
+	{
+		fill_layers(root);
+	}
+}
+
 tree::tree(data_set& train_set, int max_leafs) : max_leafs(max_leafs)
 {
 	std::set<int> features;
@@ -130,15 +155,15 @@ tree::tree(data_set& train_set, int max_leafs) : max_leafs(max_leafs)
 		feature_id_at_depth.push_back(best_feature);
 		features.erase(best_feature);
 		depth++;
-		std::cout << "level " << depth << " created. training error: " << min_error << std::endl;
+		//std::cout << "level " << depth << " created. training error: " << min_error << std::endl;
 	}
 	for (size_t i = 0; i < layers.back().size(); i++)
 	{
 		layers.back()[i]->is_leaf = true;
 	}
-	std::cout << "leafs before pruning: " << leafs << std::endl;
+	//std::cout << "leafs before pruning: " << leafs << std::endl;
 	prune(root);
-	std::cout << "leafs after pruning: " << leafs << std::endl;
+	//std::cout << "new tree! leafs after pruning: " << leafs << std::endl;
 }
 
 tree::~tree()
@@ -181,7 +206,10 @@ void tree::delete_node(node* n)
 	{
 		return;
 	}
-	layers[n->depth].erase(std::find(layers[n->depth].begin(), layers[n->depth].end(), n));
+	if (!layers.empty())
+	{
+		layers[n->depth].erase(std::find(layers[n->depth].begin(), layers[n->depth].end(), n));
+	}
 	delete_node(n->left);
 	delete_node(n->right);
 	if(n->is_leaf)
@@ -269,5 +297,15 @@ void tree::print(node* n)
 		std::cout << "split value: " << n->split_value << std::endl;
 		print(n->left);
 		print(n->right);
+	}
+}
+
+void tree::fill_layers(node* n)
+{
+	layers[n->depth].push_back(n);
+	if (!n->is_leaf)
+	{
+		fill_layers(n->left);
+		fill_layers(n->right);
 	}
 }

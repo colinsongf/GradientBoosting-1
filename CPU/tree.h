@@ -7,6 +7,7 @@
 
 struct node
 {
+	node(const node& other);
 	node(int depth);
 	void calc_avg();
 	double split(int split_feature_id);
@@ -27,6 +28,7 @@ struct node
 class tree
 {
 public:
+	tree(const tree& other);
 	tree(data_set& train_set, int max_leafs);
 	~tree();
 	double calculate_anwser(test& _test);
@@ -38,6 +40,7 @@ private:
 	void prune(node* n);
 	void calc_subtree_mse(node* n);
 	void print(node* n);
+	void fill_layers(node* n);
 	int max_leafs;
 	int leafs;
 	node* root;
