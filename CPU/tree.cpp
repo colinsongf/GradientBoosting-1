@@ -3,11 +3,15 @@
 #include <iostream>
 #include "tree.h"
 
-#define INF 1e10;
+#define INF 1e10
 
 double calc_mse(data_set::iterator data_begin, data_set::iterator data_end, double avg, double n)
 {
 	double ans = 0;
+	if (n == 0)
+	{
+		return ans;
+	}
 	for (data_set::iterator cur_test = data_begin; cur_test != data_end; cur_test++)
 	{
 		ans += ((cur_test->anwser - avg) * (cur_test->anwser - avg));
@@ -98,6 +102,21 @@ double node::split(int split_feature_id)
 			right->node_mse = r_mse;
 			right->is_leaf = (r_size == 1) ? true : false;
 		}
+	}
+	if (best_mse == INF)
+	{
+		best_mse = node_mse;
+		split_value = (data_begin + 1)->features[split_feature_id];
+		left->output_value = output_value;
+		left->size = 0;
+		left->is_leaf = true;
+		right->data_begin = data_begin;
+		right->data_end = data_end;
+		right->output_value = output_value;
+		right->size = size;
+		right->sum = sum;
+		right->node_mse = node_mse;
+		right->is_leaf = (size <= 1) ? true : false;
 	}
 	return best_mse;
 }

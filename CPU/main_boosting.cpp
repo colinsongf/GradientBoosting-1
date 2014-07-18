@@ -7,17 +7,17 @@
 int main()
 {
 	_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
-	data_set train_set("wine-train.txt");
-	data_set test_set("wine-test.txt");
-	gradient_boosting grad_boost(train_set, 4, 10);
+	data_set train_set("housing-train.txt", false);
+	data_set test_set("housing-test.txt", false);
+	/*gradient_boosting grad_boost(train_set, 4, 10);
 	double error = grad_boost.calculate_error(test_set);
-	std::cout << " test error: " << error << std::endl;
-	/*double best_error = 1e5;
+	std::cout << " test error: " << error << std::endl;*/
+	double best_error = 1e5;
 	int best_i = 0;
 	int best_j = 0;
-	for (int i = 0; i < 10; i++)
+	for (int i = 0; i < 20; i++)
 	{
-		for (int j = 2; j < 17; j+=2)
+		for (int j = 1; j < 30; j++)
 		{
 			gradient_boosting grad_boost(train_set, i, j);
 			double error = grad_boost.calculate_error(test_set);
@@ -30,6 +30,6 @@ int main()
 			std::cout << "i: " << i << " j: " << j << " test error: " << error << std::endl;
 		}
 	}
-	std::cout << best_error << " i: " << best_i << " j: " << best_j << std::endl;*/
+	std::cout << best_error << " i: " << best_i << " j: " << best_j << std::endl;
 	return 0;
 }

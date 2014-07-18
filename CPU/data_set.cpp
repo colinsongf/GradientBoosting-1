@@ -3,7 +3,7 @@
 #include <fstream>
 #include "data_set.h"
 
-data_set::data_set(std::string file_name)
+data_set::data_set(std::string file_name, bool is_class_first)
 {
 	std::ifstream data_stream(file_name);
 	std::string line;
@@ -13,10 +13,19 @@ data_set::data_set(std::string file_name)
 		double value;
 		double ans;
 		std::istringstream iss(line);
-		iss >> ans;
 		while (iss >> value)
 		{
 			features.push_back(value);
+		}
+		if (is_class_first)
+		{
+			ans = features.front();
+			features.erase(features.begin());
+		}
+		else
+		{
+			ans = features.back();
+			features.pop_back();
 		}
 		tests.push_back(test(features, ans));
 	}
