@@ -1,9 +1,12 @@
 #include <set>
 #include <algorithm>
 #include <iostream>
-#include "tree.h"
+#include "tree.cuh"
+#include "thrust\sort.h"
+#include "device_launch_parameters.h"
 
 #define INF 1e10
+#define BLOCK_SIZE 32
 
 double calc_mse(data_set::iterator data_begin, data_set::iterator data_end, double avg, double n)
 {
@@ -18,6 +21,18 @@ double calc_mse(data_set::iterator data_begin, data_set::iterator data_end, doub
 	}
 	ans /= n; 
 	return ans;
+}
+
+void* node::operator new(size_t len)
+{
+	void* ptr;
+	cudaMallocManaged(&ptr, len);
+	return ptr;
+}
+ 
+void node::operator delete(void *ptr)
+{
+    cudaFree(ptr);
 }
 
 node::node(const node& other) : data_begin(other.data_begin), data_end(other.data_end), depth(other.depth), is_leaf(other.is_leaf),
@@ -89,6 +104,8 @@ double node::split(int split_feature_id)
 			split_value = cur_test->features[split_feature_id];
 			left->data_begin = data_begin;
 			left->data_end = cur_test;
+			left->data_begin_id = data_begin_id;
+			left->data_end_id = data_begin_id + (cur_test - data_begin);
 			left->output_value = l_avg;
 			left->size = l_size;
 			left->sum = l_sum;
@@ -96,6 +113,8 @@ double node::split(int split_feature_id)
 			left->is_leaf = (l_size == 1) ? true : false;
 			right->data_begin = cur_test;
 			right->data_end = data_end;
+			right->data_begin_id = data_begin_id + (cur_test - data_begin);
+			right->data_end_id = data_end_id;
 			right->output_value = r_avg;
 			right->size = r_size;
 			right->sum = r_sum;
@@ -112,6 +131,8 @@ double node::split(int split_feature_id)
 		left->is_leaf = true;
 		right->data_begin = data_begin;
 		right->data_end = data_end;
+		right->data_begin_id = data_begin_id;
+		right->data_end_id = data_end_id;
 		right->output_value = output_value;
 		right->size = size;
 		right->sum = sum;
@@ -119,6 +140,75 @@ double node::split(int split_feature_id)
 		right->is_leaf = (size <= 1) ? true : false;
 	}
 	return best_mse;
+}
+
+double node::split(int split_feature_id, double best_split_value)
+{
+	if (is_leaf)
+	{
+		return calc_mse(data_begin, data_end, output_value, size);
+	}
+	if (best_split_value == INF)
+	{
+		split_value = (data_begin + 1)->features[split_feature_id];
+		left->output_value = output_value;
+		left->size = 0;
+		left->is_leaf = true;
+		right->data_begin = data_begin;
+		right->data_end = data_end;
+		right->data_begin_id = data_begin_id;
+		right->data_end_id = data_end_id;
+		right->output_value = output_value;
+		right->size = size;
+		right->sum = sum;
+		right->node_mse = node_mse;
+		right->is_leaf = (size <= 1) ? true : false;
+		return node_mse;
+	}
+	std::sort(data_begin, data_end, [&split_feature_id](test t1, test t2)
+	{
+		return t1.features[split_feature_id] < t2.features[split_feature_id];
+	});
+	double l_sum = 0;
+	double l_size = 0;
+	double r_sum = 0;
+	double r_size = 0;
+	data_set::iterator split = std::lower_bound(data_begin, data_end, best_split_value, [&split_feature_id](test t, double best_split_value)
+	{
+		return t.features[split_feature_id] < best_split_value;
+	});
+	std::for_each(data_begin, split, [&l_sum, &l_size](test cur_test)
+	{
+		l_sum += cur_test.anwser;
+		l_size++;
+	});
+	r_sum = sum - l_sum;
+	r_size = size - l_size;
+	double l_avg = l_sum / l_size;
+	double r_avg = r_sum / r_size;
+	double l_mse = calc_mse(data_begin, split, l_avg, l_size);
+	double r_mse = calc_mse(split, data_end, r_avg, r_size);
+	double cur_mse = l_mse + r_mse;
+	split_value = split->features[split_feature_id];
+	left->data_begin = data_begin;
+	left->data_end = split;
+	left->data_begin_id = data_begin_id;
+	left->data_end_id = data_begin_id + (split - data_begin);
+	left->output_value = l_avg;
+	left->size = l_size;
+	left->sum = l_sum;
+	left->node_mse = l_mse;
+	left->is_leaf = (l_size == 1) ? true : false;
+	right->data_begin = split;
+	right->data_end = data_end;
+	right->data_begin_id = data_begin_id + (split - data_begin);
+	right->data_end_id = data_end_id;
+	right->output_value = r_avg;
+	right->size = r_size;
+	right->sum = r_sum;
+	right->node_mse = r_mse;
+	right->is_leaf = (r_size == 1) ? true : false;
+	return cur_mse;
 }
 
 tree::tree(const tree& other) : feature_id_at_depth(other.feature_id_at_depth), leafs(other.leafs), max_leafs(other.max_leafs)
@@ -138,11 +228,17 @@ tree::tree(data_set& train_set, int max_leafs) : max_leafs(max_leafs)
 	{
 		features.insert(i);
 	}
+	for (data_set::iterator cur_test = train_set.begin(); cur_test != train_set.end(); cur_test++)
+	{
+		tests_d.push_back(test_d(*cur_test));
+	}
 	leafs = 1;
 	int depth = 0;
 	root = new node(0);
 	root->data_begin = train_set.begin();
 	root->data_end = train_set.end();
+	root->data_begin_id = 0;
+	root->data_end_id = tests_d.size();
 	root->calc_avg();
 	root->node_mse = calc_mse(root->data_begin, root->data_end, root->output_value, root->size);
 	std::vector<node*> layer;
@@ -156,21 +252,23 @@ tree::tree(data_set& train_set, int max_leafs) : max_leafs(max_leafs)
 		for (std::set<int>::iterator cur_split_feature = features.begin(); cur_split_feature != features.end(); cur_split_feature++)
 		//choose best split feature at current depth
 		{
-			double cur_error = 0;
+			double cur_error = split_layer(depth, *cur_split_feature);
+			/*double cur_error = 0;
 			for (size_t i = 0; i < layers[depth].size(); i++)
 			{
 				cur_error += layers[depth][i]->split(*cur_split_feature);
-			}
+			}*/
 			if (cur_error < min_error)
 			{
 				min_error = cur_error;
 				best_feature = *cur_split_feature;
 			}
 		}
-		for (size_t i = 0; i < layers[depth].size(); i++)
+		split_layer(depth, best_feature);
+		/*for (size_t i = 0; i < layers[depth].size(); i++)
 		{
 			layers[depth][i]->split(best_feature);
-		}
+		}*/
 		feature_id_at_depth.push_back(best_feature);
 		features.erase(best_feature);
 		depth++;
@@ -336,4 +434,95 @@ void tree::fill_layers(node* n)
 		fill_layers(n->left);
 		fill_layers(n->right);
 	}
+}
+
+struct test_d_comparator {
+	test_d_comparator(int split_feature_id) : split_feature_id(split_feature_id) {}
+	__host__ __device__	bool operator()(test_d t1, test_d t2)
+	{
+		return t1.features[split_feature_id] < t2.features[split_feature_id];
+	}
+	int split_feature_id;
+};
+
+__device__ double calc_mse_d(test_d* tests, int begin_id, int end_id, double avg, double n)
+{
+	double ans = 0;
+	if (n == 0)
+	{
+		return ans;
+	}
+	for (size_t i = begin_id; i < end_id; i++)
+	{
+		ans += ((tests[i].anwser - avg) * (tests[i].anwser - avg));
+	}
+	ans /= n; 
+	return ans;
+}
+
+__global__ void split_layer_gpu(node** layer, test_d* tests, double* split_values, int split_feature_id)
+{
+	int i = blockIdx.x * blockDim.x + threadIdx.x;
+
+	if (layer[i]->is_leaf)
+	{
+		return;
+	}
+	double l_sum = 0;
+	double l_size = 0;
+	double r_sum = layer[i]->sum;
+	double r_size = layer[i]->size;
+	double best_mse = INF; 
+	double split_value = 0;
+	for (size_t j = layer[i]->data_begin_id + 1; j < layer[i]->data_end_id; j++) //try all possible splits
+	{
+		l_sum += tests[j - 1].anwser;
+		l_size++;
+		r_sum -= tests[j - 1].anwser;
+		r_size--;
+		if (tests[j].features[split_feature_id] == tests[j - 1].features[split_feature_id])
+		{
+			continue;
+		}
+		double l_avg = l_sum / l_size;
+		double r_avg = r_sum / r_size;
+		double l_mse = calc_mse_d(tests, layer[i]->data_begin_id, j, l_avg, l_size);
+		double r_mse = calc_mse_d(tests, j, layer[i]->data_end_id, r_avg, r_size);
+		double cur_mse = l_mse + r_mse;
+		if (cur_mse < best_mse)
+		{
+			best_mse = cur_mse;
+			split_value = tests[j].features[split_feature_id];
+		}
+	}
+	if (best_mse != INF)
+	{
+		split_values[i] = split_value;
+	}
+}
+
+double tree::split_layer(int depth, int split_feature_id)
+{
+	for (size_t i = 0; i < layers[depth].size(); i++)
+	{
+		thrust::sort(tests_d.begin() + layers[depth][i]->data_begin_id, tests_d.begin() + layers[depth][i]->data_end_id,
+			test_d_comparator(split_feature_id));
+	}
+	thrust::device_vector<double> split_values(layers[depth].size(), INF);
+	thrust::device_vector<node*> layer(layers[depth]);
+	dim3 block(layers[depth].size(), 1); //*****************************************BAD!**********************
+	dim3 grid(1, 1);
+	split_layer_gpu<<<grid, block>>>(thrust::raw_pointer_cast(&layer[0]), thrust::raw_pointer_cast(&tests_d[0]), 
+		thrust::raw_pointer_cast(&split_values[0]), split_feature_id);
+	cudaDeviceSynchronize();
+	double error = 0;
+	double* split_values_h = (double*)malloc(layers[depth].size() * sizeof(double));
+	cudaMemcpy(split_values_h, thrust::raw_pointer_cast(&split_values[0]), layers[depth].size() * sizeof(double), cudaMemcpyDeviceToHost);
+	cudaDeviceSynchronize();
+	for (size_t i = 0; i < layers[depth].size(); i++)
+	{
+		error += layers[depth][i]->split(split_feature_id, split_values_h[i]);
+	}
+	free(split_values_h);
+	return error;
 }

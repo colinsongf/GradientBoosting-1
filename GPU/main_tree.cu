@@ -1,15 +1,12 @@
-#define _CRTDBG_MAP_ALLOC
 #include <cstdlib>
-#include <crtdbg.h>
-#include <ctime>
 #include <iostream>
-#include "tree.h"
+#include <ctime>
+#include "tree.cuh"
 
 int main()
 {
 	clock_t time = clock();
-	_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
-	data_set train_set("Prototask.train2", 5, false);
+	data_set train_set("Prototask.train5", 5, false);
 	tree t(train_set, 1000000);
 	/*data_set test_set("Prototask.test", false);
 	double error = t.calculate_error(test_set);
