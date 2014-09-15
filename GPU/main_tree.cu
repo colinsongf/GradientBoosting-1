@@ -2,9 +2,11 @@
 #include <iostream>
 #include <ctime>
 #include "tree.cuh"
+#include "thrust\device_vector.h"
 
 int main()
 {
+	//thrust::device_vector<thrust::device_vector<int>> gg;
 	clock_t time = clock();
 	data_set train_set("Prototask.train5", 5, false);
 	tree t(train_set, 1000000);
