@@ -9,8 +9,7 @@
 struct node
 {
 	 //__device__ node(const node& other);
-	node(int depth);
-	__host__ __device__ node();
+	node(int depth = 0);
 	int depth;
 	double split_value;
 	double output_value;
@@ -36,16 +35,15 @@ private:
 	void prune(int node_id);
 	//void print(node* n);
 	//void fill_layers(node* n);
-	//double split_layer(int depth, int split_feature_id);
 	std::pair<int, double> fill_layer();
-	int max_leafs;
-	int leafs;
-	int depth;
 	int* feature_id_at_depth;
 	node* nodes; 
 	test_d* tests_d;
-	int tests_d_size;
-	int features_size;
 	bool* used_features;
+	int max_leafs;
+	int leafs;
+	int depth;
+	int tests_size;
+	int features_size;
 };
 #endif // TREE_H
