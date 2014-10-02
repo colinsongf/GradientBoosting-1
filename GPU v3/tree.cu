@@ -14,7 +14,7 @@
 #define INF 1e5
 #define INF_INT 100000
 #define EPS 1e-5
-#define BLOCK_SIZE 32
+#define BLOCK_SIZE 16
 
 float calc_root_mse(data_set& train_set,  float avg, float n)
 {
