@@ -7,8 +7,8 @@
 
 struct node
 {
-	 //__device__ node(const node& other);
-	node(int depth = 0);
+	__host__ __device__ node(const node& other);
+	__host__ __device__ node(int depth = 0);
 	int depth;
 	float split_value;
 	float output_value;

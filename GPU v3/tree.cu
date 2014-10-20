@@ -15,6 +15,7 @@
 #define INF_INT 100000
 #define EPS 1e-5
 #define BLOCK_SIZE 16
+#define MAX_TESTS 1500
 
 float calc_root_mse(data_set& train_set,  float avg, float n)
 {
@@ -31,11 +32,11 @@ float calc_root_mse(data_set& train_set,  float avg, float n)
 	return ans;
 }
 
- /*__device__ node::node(const node& other) : depth(other.depth), is_leaf(other.is_leaf), is_exists(is_exists),
+__host__ __device__ node::node(const node& other) : depth(other.depth), is_leaf(other.is_leaf), is_exists(other.is_exists),
 	node_mse(other.node_mse), output_value(other.output_value), size(other.size), split_value(other.split_value),
-	subtree_mse(other.subtree_mse), sum(other.sum) {}*/
+	subtree_mse(other.subtree_mse), sum(other.sum) {}
 
-node::node(int depth) : depth(depth)
+__host__ __device__ node::node(int depth) : depth(depth)
 {
 	is_leaf = false;
 	is_exists = true;
@@ -63,6 +64,8 @@ __global__ void make_last_layer_gpu(node* nodes, int depth, int layer_size)
 	}
 }
 
+//__constant__ float const_answers[1500];
+
 tree::tree(data_set& train_set, int max_leafs) : max_leafs(max_leafs)
 {
 	features_size = train_set.features_size;
@@ -80,6 +83,7 @@ tree::tree(data_set& train_set, int max_leafs) : max_leafs(max_leafs)
 	}
 	cudaMemcpyAsync(features, &train_set.features[0], sizeof(float) * tests_size * features_size, cudaMemcpyHostToDevice);
 	cudaMemcpyAsync(answers, &train_set.answers[0], sizeof(float) * tests_size, cudaMemcpyHostToDevice);
+	//cudaMemcpyToSymbol(const_answers, &train_set.answers[0], sizeof(float) * tests_size);
 	auto start = std::chrono::high_resolution_clock::now();
 	leafs = 1;
 	depth = 0;
@@ -101,7 +105,6 @@ tree::tree(data_set& train_set, int max_leafs) : max_leafs(max_leafs)
 		cudaDeviceSynchronize();
 		make_layer(depth);
 		std::pair<int, float> feature_and_error = fill_layer();
-		cudaMemcpyAsync(feature_id_at_depth + depth, &feature_and_error.first, sizeof(int), cudaMemcpyHostToDevice);
 		features_set.erase(feature_and_error.first);
 		depth++;
 		old_error = new_error;
@@ -342,8 +345,29 @@ __global__ void fill_node_id_of_test(node* nodes, int* node_id_of_test, int* fea
 
 __global__ void calc_split_gpu(node* nodes, int* node_id_of_test, float* errors, float* split_values,
 									 float* features, float* answers, int tests_size, bool* used_features,
-									 int features_size, int depth, int layer_size)
+									 int features_size, int layer_size)
 {
+	//__shared__ bool used_features_shared[21];
+	//__shared__ int node_id_of_test_shared[1500];
+	//__shared__ float features_shared[1500];
+	//int tests_per_thread = features_size / (BLOCK_SIZE * 2 - 1);
+	/*for (int i = 0; i < tests_per_thread; i++)
+	{
+		if ((threadIdx.x * BLOCK_SIZE + threadIdx.y) * tests_per_thread + i >= features_size)
+		{
+			break;
+		}
+		used_features_shared[(threadIdx.x * BLOCK_SIZE + threadIdx.y) * tests_per_thread + i] =
+			used_features[(threadIdx.x * BLOCK_SIZE + threadIdx.y) * tests_per_thread + i]; 
+		//features_shared[threadIdx.x * tests_per_thread + i] = features[(blockIdx.y * blockDim.y + threadIdx.y) * tests_size + threadIdx.x * tests_per_thread + i];
+	}*/
+	/*if ((threadIdx.x * BLOCK_SIZE + threadIdx.y) < 21) 
+	{
+		used_features_shared[threadIdx.x * BLOCK_SIZE + threadIdx.y] =
+			used_features[threadIdx.x * BLOCK_SIZE + threadIdx.y]; 
+	
+	}
+	__syncthreads();*/
 	int x = blockIdx.x * blockDim.x + threadIdx.x;
 	int y = blockIdx.y * blockDim.y + threadIdx.y;
 	if (x < tests_size && y < features_size && !used_features[y])
@@ -362,8 +386,8 @@ __global__ void calc_split_gpu(node* nodes, int* node_id_of_test, float* errors,
 		float split_value = INF;
 		float l_sum = 0;
 		float r_sum = 0;
-		float l_size = 0;
-		float r_size = 0;
+		int l_size = 0;
+		int r_size = 0;
 		float l_avg = 0;
 		float r_avg = 0;
 		float l_err = 0;
@@ -372,12 +396,17 @@ __global__ void calc_split_gpu(node* nodes, int* node_id_of_test, float* errors,
 		{
 			if (node_id_of_test[i] == node_id)
 			{
-				float cur_feature_value = features[y * tests_size + i];
-				if (cur_feature_value >= feature_value && cur_feature_value < split_value)
+				/*if (i < x && abs(cur_feature_value - feature_value)  < EPS)
 				{
-					split_value = cur_feature_value;
+					errors[y * tests_size + x] = INF;
+					return;
+				}*/
+				if (features[y * tests_size + i] >= feature_value && features[y * tests_size + i] < split_value)
+				{
+					split_value = features[y * tests_size + i];
 				}
-				if (cur_feature_value <= feature_value)
+				//split_value = fminf(split_value, fmaxf(feature_value, features[y * tests_size + i]));
+				if (features[y * tests_size + i] <= feature_value)
 				{
 					l_sum += answers[i];
 					l_size++;
@@ -415,14 +444,26 @@ __global__ void calc_split_gpu(node* nodes, int* node_id_of_test, float* errors,
 
 __global__ void calc_min_error(int* node_id_of_test, float* pre_errors, float* pre_split_values,
 							   float* errors, float* split_values, int tests_size, int features_size,
-							   int layer_size)
+							   int layer_size, bool* used_features)
 {
+	__shared__ int node_id_of_test_shared[MAX_TESTS];
+	int tests_per_thread = tests_size / (BLOCK_SIZE - 1);
+	for (int i = 0; i < tests_per_thread; i++)
+	{
+		if (threadIdx.y * tests_per_thread + i >= tests_size)
+		{
+			break;
+		}
+		node_id_of_test_shared[threadIdx.y * tests_per_thread + i] =
+			node_id_of_test[threadIdx.y * tests_per_thread + i]; 
+	}
+	__syncthreads();
 	int y = blockIdx.y * blockDim.y + threadIdx.y;
-	if (y < features_size)
+	if (y < features_size && !used_features[y])
 	{
 		for (int i = 0; i < tests_size; i++)
 		{
-			int node_id = node_id_of_test[i];
+			int node_id = node_id_of_test_shared[i];
 			if (node_id < layer_size - 1)
 			{
 				continue;
@@ -437,7 +478,7 @@ __global__ void calc_min_error(int* node_id_of_test, float* pre_errors, float* p
 }
 
 __global__ void calc_best_feature(float* errors, bool* used_features, int* best_features, float* best_errors,
-									 int features_size, int layer_size)
+									 int features_size, int layer_size, int* feature_id_at_depth, int depth)
 {
 	float best_error = INF;
 	int best_feature = -1;
@@ -455,103 +496,97 @@ __global__ void calc_best_feature(float* errors, bool* used_features, int* best_
 	}
 	best_features[0] = best_feature;
 	best_errors[0] = best_error;
+	used_features[best_feature] = true;
+	feature_id_at_depth[depth] = best_feature;
 }
 
 __global__ void make_split_gpu(node* nodes, int* node_id_of_test, float* split_values,
 							   int* best_feature, float* features, float* answers,
-							   int tests_size, int features_size, int depth, int layer_size, bool* used_features)
+							   int tests_size, int layer_size)
 {
 	int x = blockIdx.x * blockDim.x + threadIdx.x;
-	if (x == 0)
+	x = fminf(x, layer_size - 1);
+	int node_id = layer_size - 1 + x;
+	if (!nodes[node_id].is_exists || nodes[node_id].is_leaf)
 	{
-		used_features[best_feature[0]] = true;
+		return;
 	}
-	if (x < layer_size)
+	float split_value = split_values[best_feature[0] * layer_size + x];
+	nodes[node_id].split_value = split_value;
+	float l_sum = 0;
+	float r_sum = 0;
+	int l_size = 0;
+	int r_size = 0;
+	float l_avg = 0;
+	float r_avg = 0;
+	float l_err = 0;
+	float r_err = 0;
+	float l_tests[MAX_TESTS];
+	float r_tests[MAX_TESTS];
+	for (int i = 0; i < tests_size; i++)
 	{
-		int node_id = layer_size - 1 + x;
-		if (!nodes[node_id].is_exists || nodes[node_id].is_leaf)
+		if (node_id_of_test[i] == node_id)
 		{
-			return;
-		}
-		float split_value = split_values[best_feature[0] * layer_size + x];
-		nodes[node_id].split_value = split_value;
-		float l_sum = 0;
-		float r_sum = 0;
-		float l_size = 0;
-		float r_size = 0;
-		float l_avg = 0;
-		float r_avg = 0;
-		float l_err = 0;
-		float r_err = 0;
-		for (int i = 0; i < tests_size; i++)
-		{
-			if (node_id_of_test[i] == node_id)
+			if (features[best_feature[0] * tests_size + i] < split_value)
 			{
-				if (features[best_feature[0] * tests_size + i] < split_value)
-				{
-					l_sum += answers[i];
-					l_size++;
-				}
-				else
-				{
-					r_sum += answers[i];
-					r_size++;
-				}
+				l_tests[l_size] = answers[i];
+				l_sum += l_tests[l_size];
+				l_size++;
+			}
+			else
+			{
+				r_tests[r_size] = answers[i];
+				r_sum += r_tests[r_size];
+				r_size++;
 			}
 		}
-		if (l_size == 0)
-		{
-			nodes[2 * node_id + 1].output_value = nodes[node_id].output_value;
-			nodes[2 * node_id + 1].size = 0;
-			nodes[2 * node_id + 1].is_leaf = true;
-			nodes[2 * node_id + 2].output_value = nodes[node_id].output_value;
-			nodes[2 * node_id + 2].size = nodes[node_id].size;
-			nodes[2 * node_id + 2].sum = nodes[node_id].sum;
-			nodes[2 * node_id + 2].node_mse = nodes[node_id].node_mse;
-			nodes[2 * node_id + 2].is_leaf = (nodes[node_id].size <= 1) ? true : false;
-			return;
-		}
-		if (r_size == 0)
-		{
-			nodes[2 * node_id + 2].output_value = nodes[node_id].output_value;
-			nodes[2 * node_id + 2].size = 0;
-			nodes[2 * node_id + 2].is_leaf = true;
-			nodes[2 * node_id + 1].output_value = nodes[node_id].output_value;
-			nodes[2 * node_id + 1].size = nodes[node_id].size;
-			nodes[2 * node_id + 1].sum = nodes[node_id].sum;
-			nodes[2 * node_id + 1].node_mse = nodes[node_id].node_mse;
-			nodes[2 * node_id + 1].is_leaf = (nodes[node_id].size <= 1) ? true : false;
-			return;
-		}
-		l_avg = l_sum / l_size; 
-		r_avg = r_sum / r_size; 
-		for (int i = 0; i < tests_size; i++)
-		{
-			if (node_id_of_test[i] == node_id)
-			{
-				if (features[best_feature[0] * tests_size + i] < split_value)
-				{
-					l_err += ((answers[i] - l_avg) * (answers[i] - l_avg));
-				}
-				else
-				{
-					r_err += ((answers[i] - r_avg) * (answers[i] - r_avg));
-				}
-			}
-		}
-		l_err = l_err / l_size;
-		r_err = r_err / r_size;
-		nodes[2 * node_id + 1].output_value = l_avg;
-		nodes[2 * node_id + 1].size = l_size;
-		nodes[2 * node_id + 1].sum = l_sum;
-		nodes[2 * node_id + 1].node_mse = l_err;
-		nodes[2 * node_id + 1].is_leaf = (l_size == 1) ? true : false;
-		nodes[2 * node_id + 2].output_value = r_avg;
-		nodes[2 * node_id + 2].size = r_size;
-		nodes[2 * node_id + 2].sum = r_sum;
-		nodes[2 * node_id + 2].node_mse = r_err;
-		nodes[2 * node_id + 2].is_leaf = (r_size == 1) ? true : false;
 	}
+	if (l_size == 0)
+	{
+		nodes[2 * node_id + 1].output_value = nodes[node_id].output_value;
+		nodes[2 * node_id + 1].size = 0;
+		nodes[2 * node_id + 1].is_leaf = true;
+		nodes[2 * node_id + 2].output_value = nodes[node_id].output_value;
+		nodes[2 * node_id + 2].size = nodes[node_id].size;
+		nodes[2 * node_id + 2].sum = nodes[node_id].sum;
+		nodes[2 * node_id + 2].node_mse = nodes[node_id].node_mse;
+		nodes[2 * node_id + 2].is_leaf = (nodes[node_id].size <= 1) ? true : false;
+		return;
+	}
+	if (r_size == 0)
+	{
+		nodes[2 * node_id + 2].output_value = nodes[node_id].output_value;
+		nodes[2 * node_id + 2].size = 0;
+		nodes[2 * node_id + 2].is_leaf = true;
+		nodes[2 * node_id + 1].output_value = nodes[node_id].output_value;
+		nodes[2 * node_id + 1].size = nodes[node_id].size;
+		nodes[2 * node_id + 1].sum = nodes[node_id].sum;
+		nodes[2 * node_id + 1].node_mse = nodes[node_id].node_mse;
+		nodes[2 * node_id + 1].is_leaf = (nodes[node_id].size <= 1) ? true : false;
+		return;
+	}
+	l_avg = l_sum / l_size; 
+	r_avg = r_sum / r_size; 
+	for (int i = 0; i < l_size; i++)
+	{
+		l_err += ((l_tests[i] - l_avg) * (l_tests[i] - l_avg));
+	}
+	for (int i = 0; i < r_size; i++)
+	{
+		r_err += ((r_tests[i] - r_avg) * (r_tests[i] - r_avg));
+	}
+	l_err = l_err / l_size;
+	r_err = r_err / r_size;
+	nodes[2 * node_id + 1].output_value = l_avg;
+	nodes[2 * node_id + 1].size = l_size;
+	nodes[2 * node_id + 1].sum = l_sum;
+	nodes[2 * node_id + 1].node_mse = l_err;
+	nodes[2 * node_id + 1].is_leaf = (l_size == 1) ? true : false;
+	nodes[2 * node_id + 2].output_value = r_avg;
+	nodes[2 * node_id + 2].size = r_size;
+	nodes[2 * node_id + 2].sum = r_sum;
+	nodes[2 * node_id + 2].node_mse = r_err;
+	nodes[2 * node_id + 2].is_leaf = (r_size == 1) ? true : false;
 }
 
 std::pair<int, float> tree::fill_layer()
@@ -569,15 +604,15 @@ std::pair<int, float> tree::fill_layer()
 	cudaDeviceSynchronize();
 	calc_split_gpu<<<grid, block>>>(nodes, thrust::raw_pointer_cast(&node_id_of_test[0]),
 		thrust::raw_pointer_cast(&pre_errors[0]), thrust::raw_pointer_cast(&pre_split_values[0]),
-		features, answers, tests_size, used_features, features_size, depth, layer_size);
-	thrust::device_vector<float> errors(pow(2, depth) * features_size, INF_INT);
-	thrust::device_vector<float> split_values(pow(2, depth) * features_size, INF_INT);
+		features, answers, tests_size, used_features, features_size, layer_size);
+	thrust::device_vector<float> errors(layer_size * features_size, INF_INT);
+	thrust::device_vector<float> split_values(layer_size * features_size, INF_INT);
 	block.x = 1;
 	grid.x = 1;
 	cudaDeviceSynchronize();
 	calc_min_error<<<grid, block>>>(thrust::raw_pointer_cast(&node_id_of_test[0]), thrust::raw_pointer_cast(&pre_errors[0]),
 		thrust::raw_pointer_cast(&pre_split_values[0]),	thrust::raw_pointer_cast(&errors[0]),
-		thrust::raw_pointer_cast(&split_values[0]),	tests_size, features_size, layer_size);
+		thrust::raw_pointer_cast(&split_values[0]),	tests_size, features_size, layer_size, used_features);
 	cudaDeviceSynchronize();
 	thrust::replace(errors.begin(), errors.end(), INF_INT, 0);
 	for (int i = 0; i < features_size; i++)
@@ -593,13 +628,13 @@ std::pair<int, float> tree::fill_layer()
 	grid.x = 1;
 	grid.y = 1;
 	calc_best_feature<<<grid, block>>>(thrust::raw_pointer_cast(&errors[0]), used_features,
-		thrust::raw_pointer_cast(&best_feature[0]), thrust::raw_pointer_cast(&best_error[0]), features_size, layer_size);
+		thrust::raw_pointer_cast(&best_feature[0]), thrust::raw_pointer_cast(&best_error[0]), features_size, layer_size, feature_id_at_depth, depth);
 	block.x = BLOCK_SIZE;
-	grid.x = 1 + pow(2, depth) / (1 + BLOCK_SIZE);
+	grid.x = 1 + layer_size / (1 + BLOCK_SIZE);
 	cudaDeviceSynchronize();
 	make_split_gpu<<<grid, block>>>(nodes, thrust::raw_pointer_cast(&node_id_of_test[0]),
 		thrust::raw_pointer_cast(&split_values[0]), thrust::raw_pointer_cast(&best_feature[0]),
-		features, answers, tests_size, features_size, depth, layer_size, used_features);
+		features, answers, tests_size, layer_size);
 	cudaDeviceSynchronize();
 	return std::make_pair(best_feature[0], best_error[0]);
 }
