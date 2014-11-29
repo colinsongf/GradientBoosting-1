@@ -20,12 +20,13 @@ struct node
 	bool is_exists;
 };
 
-struct triple
+struct my_tuple
 {
-	__host__ __device__ triple(int test_id, float feature, float answer);
-	__host__ __device__ triple() {};
-	friend bool __host__ __device__ operator<(const triple& lhs, const triple& rhs);
+	__host__ __device__ my_tuple(int test_id, int split_id, float feature, float answer);
+	__host__ __device__ my_tuple() {};
+	friend bool __host__ __device__ operator<(const my_tuple& lhs, const my_tuple& rhs);
 	int test_id;
+	int split_id;
 	float feature;
 	float answer;
 };
@@ -34,7 +35,7 @@ class tree
 {
 public:
 	//tree(const tree& other);
-	tree(data_set& train_set, int max_leafs);
+	tree(data_set& train_set, int max_leafs, int max_depth);
 	~tree();
 	float calculate_answer(test& _test);
 	//float calculate_error(data_set& test_set);
@@ -49,9 +50,8 @@ private:
 	float* answers;
 	int* feature_id_at_depth;
 	node* nodes; 
-	thrust::device_vector<triple> sorted_tests;
+	thrust::device_vector<my_tuple> sorted_tests;
 	bool* used_features;
-	int max_leafs;
 	int leafs;
 	int depth;
 	int tests_size;
