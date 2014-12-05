@@ -46,12 +46,25 @@ __host__ __device__ node::node(int depth) : depth(depth)
 }
 
 __host__ __device__ my_tuple::my_tuple(int test_id, int split_id, float feature, float answer) : test_id(test_id), split_id(split_id),
-	feature(feature), answer(answer) {};
+	feature(feature), answer(answer) {}
 
 bool __host__ __device__ operator<(const my_tuple& lhs, const my_tuple& rhs)
 {
 	return lhs.feature < rhs.feature;
 }
+
+__host__ __device__ my_triple::my_triple(int node_id, float feature, float error) : node_id(node_id), feature(feature), error(error) {}
+
+__host__ __device__ my_triple::my_triple()
+{
+	error = INF_INT;
+}
+
+bool __host__ __device__ operator<(const my_triple& lhs, const my_triple& rhs)
+{
+	return lhs.error < rhs.error;
+}
+	
 
 /*tree::tree(const tree& other) : feature_id_at_depth(other.feature_id_at_depth), leafs(other.leafs), max_leafs(other.max_leafs)
 {
@@ -388,25 +401,21 @@ __global__ void fill_split_ids(int* node_id_of_test, my_tuple* sorted_tests, int
 	}
 }    
 
-__global__ void calc_split_gpu2(node* nodes, int* node_id_of_test, float* errors,
+__global__ void calc_split_gpu2(node* nodes, int* node_id_of_test, my_triple* errors,
 									 int tests_size, bool* used_features,
 									 int features_size, int layer_size, 
 									 my_tuple* sorted_tests)
 {
+	__shared__ my_tuple sorted_tests_shared[BLOCK_SIZE][BLOCK_SIZE];
 	int x = blockIdx.x * blockDim.x + threadIdx.x;
 	int y = blockIdx.y * blockDim.y + threadIdx.y;
 	if (x < tests_size && y < features_size && !used_features[y])
 	{
 		my_tuple cur_my_tuple = sorted_tests[y * tests_size + x];
 		int node_id = node_id_of_test[cur_my_tuple.test_id];
+		float feature_value = cur_my_tuple.feature;
 		if (node_id < layer_size - 1)
 		{
-			return;
-		}
-		if (nodes[node_id].is_leaf)
-		{
-			errors[y * tests_size + x] = nodes[node_id].node_mse;
-			//printf("leaf x: %d y: %d mse: %f id: %d\n", x, y, nodes[node_id].node_mse, node_id);
 			return;
 		}
 		int node_split_id_shifted = node_id - layer_size + 1;
@@ -418,116 +427,108 @@ __global__ void calc_split_gpu2(node* nodes, int* node_id_of_test, float* errors
 		float r_avg = 0;
 		float l_err = 0;
 		float r_err = 0;
-		for (int i = 0; i <= x; i++)
+		int parts = tests_size / BLOCK_SIZE + 1;
+		for (int id = 0; id < parts; id++)
 		{
-			cur_my_tuple = sorted_tests[y * tests_size + i];
-			int exists = (cur_my_tuple.split_id >> node_split_id_shifted) & 1;
-			l_sum += exists * cur_my_tuple.answer;
-			l_size += exists;
-		}
-		for (int i = x + 1; i < tests_size; i++)
-		{
-			cur_my_tuple = sorted_tests[y * tests_size + i];
-			int exists = (cur_my_tuple.split_id >> node_split_id_shifted) & 1;
-			r_sum += exists * cur_my_tuple.answer;
-			r_size += exists;
+			sorted_tests_shared[threadIdx.y][threadIdx.x] = sorted_tests[y * tests_size + id * BLOCK_SIZE + threadIdx.x];
+			__syncthreads();
+			int i;
+			for (i = 0; i < BLOCK_SIZE && id * BLOCK_SIZE + threadIdx.x <= x; i++)
+			{
+				cur_my_tuple = sorted_tests_shared[threadIdx.y][i];
+				int exists = (cur_my_tuple.split_id >> node_split_id_shifted) & 1;
+				l_sum += exists * cur_my_tuple.answer;
+				l_size += exists;
+			}
+			for (; i < BLOCK_SIZE && id * BLOCK_SIZE + threadIdx.x < tests_size; i++)
+			{
+				cur_my_tuple = sorted_tests_shared[threadIdx.y][i];
+				int exists = (cur_my_tuple.split_id >> node_split_id_shifted) & 1;
+				r_sum += exists * cur_my_tuple.answer;
+				r_size += exists;
+			}
+			__syncthreads();
 		}
 		l_avg = (l_size > 0) ? (l_sum / l_size) : 0; 
 		r_avg = (r_size > 0) ? (r_sum / r_size) : 0; 
-		for (int i = 0; i <= x; i++)
+		for (int id = 0; id < parts; id++)
 		{
-			cur_my_tuple = sorted_tests[y * tests_size + i];
-			int exists = (cur_my_tuple.split_id >> node_split_id_shifted) & 1;
-			l_err += exists * (cur_my_tuple.answer - l_avg) * (cur_my_tuple.answer - l_avg); 
-		}
-		for (int i = x + 1; i < tests_size; i++)
-		{
-			cur_my_tuple = sorted_tests[y * tests_size + i];
-			int exists = (cur_my_tuple.split_id >> node_split_id_shifted) & 1;
-			r_err += exists * (cur_my_tuple.answer - r_avg) * (cur_my_tuple.answer - r_avg);
+			sorted_tests_shared[threadIdx.y][threadIdx.x] = sorted_tests[y * tests_size + id * BLOCK_SIZE + threadIdx.x];
+			__syncthreads();
+			int i;
+			for (i = 0; i < BLOCK_SIZE && id * BLOCK_SIZE + threadIdx.x <= x; i++)
+			{
+				cur_my_tuple = sorted_tests_shared[threadIdx.y][i];
+				int exists = (cur_my_tuple.split_id >> node_split_id_shifted) & 1;
+				l_err += exists * (cur_my_tuple.answer - l_avg) * (cur_my_tuple.answer - l_avg); 
+			}
+			for (; i < BLOCK_SIZE && id * BLOCK_SIZE + threadIdx.x < tests_size; i++)
+			{
+				cur_my_tuple = sorted_tests_shared[threadIdx.y][i];
+				int exists = (cur_my_tuple.split_id >> node_split_id_shifted) & 1;
+				r_err += exists * (cur_my_tuple.answer - r_avg) * (cur_my_tuple.answer - r_avg);
+			}
+			__syncthreads();
 		}
 		l_err = (l_size > 0) ? (l_err / l_size) : 0;
 		r_err = (r_size > 0) ? (r_err / r_size) : 0;
-		errors[y * tests_size + x] = l_err + r_err;
+		errors[y * tests_size + x] = my_triple(node_id, feature_value, l_err + r_err);
 		//printf("y: %d x: %d err: %f %f\n", y, x, l_err, r_err);
 	}
 }
 
-__global__ void calc_min_error(node* nodes, int* node_id_of_test, float* pre_errors,
+__global__ void calc_min_error(node* nodes, int* node_id_of_test, my_triple* pre_errors,
 							   float* errors, float* split_values, int tests_size, int features_size,
 							   int layer_size, bool* used_features, my_tuple* sorted_tests)
 {
-	/*__shared__ int node_id_of_test_shared[MAX_TESTS];
-	int tests_per_thread = tests_size / (BLOCK_SIZE - 1);
-	for (int i = 0; i < tests_per_thread; i++)
-	{
-		if (threadIdx.y * tests_per_thread + i >= tests_size)
-		{
-			break;
-		}
-		node_id_of_test_shared[threadIdx.y * tests_per_thread + i] =
-			node_id_of_test[threadIdx.y * tests_per_thread + i]; 
-	}
-	__syncthreads();*/
+	int x = blockIdx.x * blockDim.x + threadIdx.x;
 	int y = blockIdx.y * blockDim.y + threadIdx.y;
-	if (y < features_size && !used_features[y])
+	if (y < features_size && x < layer_size && !used_features[y])
 	{
-		for (int i = 0; i < tests_size; i++)
+		int node_id = layer_size - 1 + x;
+		node cur_node = nodes[node_id];
+		if (!cur_node.is_exists || cur_node.is_leaf)
 		{
-			my_tuple cur_my_tuple = sorted_tests[y * tests_size + i];
-			float feature_value = cur_my_tuple.feature;
-			float split_value = INF;
-			int node_id = node_id_of_test[cur_my_tuple.test_id];
-			if (node_id < layer_size - 1)
+			return;
+		}
+		int i = 0;
+		int j;
+		while (i < tests_size)
+		{
+			my_triple t1 = pre_errors[y * tests_size + i];
+			my_triple t2;
+			if (t1.node_id == node_id)
 			{
-				continue;
-			}
-			if (nodes[node_id].is_leaf)
-			{
-				errors[y * layer_size + node_id + 1 - layer_size] = pre_errors[y * tests_size + i];
-				continue;
-			}
-			int node_split_id_shifted = node_id - layer_size + 1;
-			if (pre_errors[y * tests_size + i] < errors[y * layer_size + node_id + 1 - layer_size])
-			{
-				for (int j = i + 1; j < tests_size; j++)
+				j = i + 1;
+				while (j < tests_size)
 				{
-					my_tuple t = sorted_tests[y * tests_size + j];
-					if ((t.split_id >> node_split_id_shifted) & 1)
+					t2 = pre_errors[y * tests_size + j];
+					if (t2.node_id == node_id)
 					{
-						split_value = t.feature;
 						break;
 					}
+					j++;
 				}
-				if (split_value == feature_value)
+				if (j == tests_size)
 				{
-					continue;
+					errors[y * layer_size + node_id + 1 - layer_size] = t1.error;
+					split_values[y * layer_size + node_id + 1 - layer_size] = t1.feature + EPS;
+					return;
 				}
-				if (split_value == INF)
+				if (t1.feature != t2.feature)
 				{
-					split_value = feature_value + EPS;
+					errors[y * layer_size + node_id + 1 - layer_size] = t1.error;
+					split_values[y * layer_size + node_id + 1 - layer_size] = (t1.feature + t2.feature) / 2.0;
+					return;
 				}
 				else
 				{
-					split_value = (feature_value + split_value) / 2.0 + EPS;
+					i = j;
+					continue;
 				}
-				errors[y * layer_size + node_id + 1 - layer_size] = pre_errors[y * tests_size + i];
-				split_values[y * layer_size + node_id + 1 - layer_size] = split_value;
 			}
+			i++;
 		}
-		/*for (int i = 0; i < tests_size; i++)
-		{
-			int node_id = node_id_of_test[i];
-			if (node_id < layer_size - 1)
-			{
-				continue;
-			}
-			if (pre_errors[y * tests_size + i] < errors[y * layer_size + node_id + 1 - layer_size])
-			{
-				errors[y * layer_size + node_id + 1 - layer_size] = pre_errors[y * tests_size + i];
-				split_values[y * layer_size + node_id + 1 - layer_size] = pre_split_values[y * tests_size + i];
-			}
-		}*/
 	}
 }
 
@@ -659,8 +660,7 @@ std::pair<int, float> tree::fill_layer()
 	grid.y = 1 + features_size / (1 + BLOCK_SIZE);
 	fill_split_ids<<<grid, block>>>(thrust::raw_pointer_cast(&node_id_of_test[0]), thrust::raw_pointer_cast(&sorted_tests[0]),
 		tests_size, features_size, layer_size);
-	thrust::device_vector<float> pre_errors(tests_size * features_size, INF_INT);
-	thrust::device_vector<float> pre_split_values(tests_size * features_size, 0);
+	thrust::device_vector<my_triple> pre_errors(tests_size * features_size);
 	/*int sumg = 0;
 	for (int i = 0 ; i < tests_per_slot; i++) {
 		for (int j = 0; j < SLOT_SIZE; j++) {
@@ -674,7 +674,6 @@ std::pair<int, float> tree::fill_layer()
 	std::cout << "dfd " << sumg << " sdsds" << std::endl;
 	*/
 	cudaDeviceSynchronize();
-
 
 	/*if (layer_size==1024)
 	{
@@ -702,10 +701,17 @@ std::pair<int, float> tree::fill_layer()
 		thrust::raw_pointer_cast(&sorted_tests[0]));
 	thrust::device_vector<float> errors(layer_size * features_size, INF_INT);
 	thrust::device_vector<float> split_values(layer_size * features_size, INF_INT);
-	block.x = 1;
-	grid.x = 1;
+	//block.x = 1;
+	//grid.x = 1;
 	cudaDeviceSynchronize();
+
+	for (int i = 0; i < features_size; i++)
+	{
+		thrust::sort(pre_errors.begin() + i * tests_size, pre_errors.begin() + (i + 1) * tests_size);
+	}
 	
+	block.x = BLOCK_SIZE;
+	grid.x = 1 + layer_size / (1 + BLOCK_SIZE);
 
 	calc_min_error<<<grid, block>>>(nodes, thrust::raw_pointer_cast(&node_id_of_test[0]), thrust::raw_pointer_cast(&pre_errors[0]),
 		thrust::raw_pointer_cast(&errors[0]),

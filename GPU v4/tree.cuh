@@ -31,6 +31,16 @@ struct my_tuple
 	float answer;
 };
 
+struct my_triple
+{
+	__host__ __device__ my_triple(int node_id, float feature, float error);
+	__host__ __device__ my_triple();
+	friend bool __host__ __device__ operator<(const my_triple& lhs, const my_triple& rhs);
+	int node_id;
+	float feature;
+	float error;
+};
+
 class tree
 {
 public:

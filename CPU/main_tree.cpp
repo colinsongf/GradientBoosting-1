@@ -10,7 +10,7 @@ int main()
 {
 	clock_t time = clock();
 	_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
-	data_set train_set("Prototask.train3", 21, false);
+	data_set train_set("Prototask.train", 21, false);
 	auto start = std::chrono::high_resolution_clock::now();
 	tree t(train_set, 1000000);
 	/*data_set test_set("Prototask.test", false);
