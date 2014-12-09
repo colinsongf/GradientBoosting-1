@@ -8,7 +8,7 @@
 class gradient_boosting
 {
 public:
-	gradient_boosting(data_set& train_set, int iterations, int max_leafs);
+	gradient_boosting(data_set& train_set, int iterations, int max_leafs, int max_depth);
 	double calculate_anwser(test& _test);
 	double calculate_error(data_set& test_set);
 private:

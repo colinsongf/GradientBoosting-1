@@ -31,13 +31,12 @@ struct my_tuple
 	float answer;
 };
 
-struct my_triple
+struct my_pair
 {
-	__host__ __device__ my_triple(int node_id, float feature, float error);
-	__host__ __device__ my_triple();
-	friend bool __host__ __device__ operator<(const my_triple& lhs, const my_triple& rhs);
-	int node_id;
-	float feature;
+	__host__ __device__ my_pair(int sorted_tests_id, float error);
+	__host__ __device__ my_pair();
+	friend bool __host__ __device__ operator<(const my_pair& lhs, const my_pair& rhs);
+	int sorted_tests_id;
 	float error;
 };
 

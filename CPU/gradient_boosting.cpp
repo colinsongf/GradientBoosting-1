@@ -1,14 +1,14 @@
 #include <cmath>
 #include "gradient_boosting.h"
 
-gradient_boosting::gradient_boosting(data_set& train_set, int iterations, int max_leafs) : train_set(train_set)
+gradient_boosting::gradient_boosting(data_set& train_set, int iterations, int max_leafs, int max_depth) : train_set(train_set)
 {
-	trees.push_back(tree(train_set, 1));
+	trees.push_back(tree(train_set, 1, max_depth));
 	coefficients.push_back(1.0);
 	for (int i = 0; i < iterations; i++)
 	{
 		data_set pseudo_residuals = get_pseudo_residuals_set();
-		trees.push_back(tree(pseudo_residuals, max_leafs));
+		trees.push_back(tree(pseudo_residuals, max_leafs, max_depth));
 		coefficients.push_back(calculate_coefficient());
 	}
 }

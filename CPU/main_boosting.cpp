@@ -7,12 +7,12 @@
 int main()
 {
 	_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
-	data_set train_set("housing-train.txt", false);
-	data_set test_set("housing-test.txt", false);
-	/*gradient_boosting grad_boost(train_set, 4, 10);
+	data_set train_set("Prototask.train", 21, false);
+	data_set test_set("Prototask.test", 21, false);
+	gradient_boosting grad_boost(train_set, 10, 1000000, 4);
 	double error = grad_boost.calculate_error(test_set);
-	std::cout << " test error: " << error << std::endl;*/
-	double best_error = 1e5;
+	std::cout << " test error: " << error << std::endl;
+	/*double best_error = 1e5;
 	int best_i = 0;
 	int best_j = 0;
 	for (int i = 0; i < 20; i++)
@@ -31,5 +31,6 @@ int main()
 		}
 	}
 	std::cout << best_error << " i: " << best_i << " j: " << best_j << std::endl;
+	*/
 	return 0;
 }

@@ -14,7 +14,7 @@ int main()
 		int tests_size = 1500;
 		clock_t time = clock();
 		data_set train_set("Prototask.train", features_size, tests_size, false);
-		tree t(train_set, 1000000, 4);
+		tree t(train_set, 1000000, 6);
 		time = clock() - time;
 		if (i >= 0)
 		{

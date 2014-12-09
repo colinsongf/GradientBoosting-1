@@ -66,7 +66,7 @@ __global__ void make_last_layer_gpu(node* nodes, int depth, int layer_size)
 
 //__constant__ float const_answers[1500];
 
-tree::tree(data_set& train_set, int max_leafs) : max_leafs(max_leafs)
+tree::tree(data_set& train_set, int max_leafs, int max_depth)
 {
 	features_size = train_set.features_size;
 	tests_size = train_set.tests_size;
@@ -100,7 +100,7 @@ tree::tree(data_set& train_set, int max_leafs) : max_leafs(max_leafs)
 	cudaMemcpyAsync(nodes, &root, sizeof(node), cudaMemcpyHostToDevice);
 	float new_error = root.node_mse;
 	float old_error = new_error + EPS;
-	while (/*new_error < old_error &&*/ leafs < max_leafs && !features_set.empty())
+	while (/*new_error < old_error &&*/ leafs < max_leafs && depth < max_depth && !features_set.empty())
 	{
 		cudaDeviceSynchronize();
 		make_layer(depth);
@@ -354,7 +354,7 @@ __global__ void fill_is_tests_in_node(int* node_id_of_test, int tests_size, int*
 			is_tests_in_node[node_id_of_test[i] - temp_sub] |= (1 << i);
 		}
 	}
-}                  
+}       
 
 __global__ void calc_split_gpu(node* nodes, int* node_id_of_test, float* errors, float* split_values,
 									 float* features, float* answers, int tests_size, bool* used_features,
@@ -460,6 +460,113 @@ __global__ void calc_split_gpu(node* nodes, int* node_id_of_test, float* errors,
 		split_values[y * tests_size + x] = split_value;
 	}
 }
+
+
+__global__ void calc_split_gpu2(node* nodes, int* node_id_of_test, float* errors, float* split_values,
+									 float* features, float* answers, int tests_size, bool* used_features,
+									 int features_size, int layer_size)
+{
+	//__shared__ bool used_features_shared[21];
+	//__shared__ int node_id_of_test_shared[1500];
+	//__shared__ float features_shared[1500];
+	/*__shared__ float answers_shared[1500];
+	int tests_per_thread = 1500 / (BLOCK_SIZE * 2 - 1);
+	for (int i = 0; i < tests_per_thread; i++)
+	{
+		if ((threadIdx.x * BLOCK_SIZE + threadIdx.y) * tests_per_thread + i >= 1500)
+		{
+			break;
+		}
+		answers_shared[(threadIdx.x * BLOCK_SIZE + threadIdx.y) * tests_per_thread + i] = answers[(threadIdx.x * BLOCK_SIZE + threadIdx.y) * tests_per_thread + i];
+		//used_features_shared[(threadIdx.x * BLOCK_SIZE + threadIdx.y) * tests_per_thread + i] =
+			//used_features[(threadIdx.x * BLOCK_SIZE + threadIdx.y) * tests_per_thread + i]; 
+		//features_shared[threadIdx.x * tests_per_thread + i] = features[(blockIdx.y * blockDim.y + threadIdx.y) * tests_size + threadIdx.x * tests_per_thread + i];
+	}
+	/*if ((threadIdx.x * BLOCK_SIZE + threadIdx.y) < 21) 
+	{
+		used_features_shared[threadIdx.x * BLOCK_SIZE + threadIdx.y] =
+			used_features[threadIdx.x * BLOCK_SIZE + threadIdx.y]; 
+	
+	}
+	__syncthreads();*/
+	int x = blockIdx.x * blockDim.x + threadIdx.x;
+	int y = blockIdx.y * blockDim.y + threadIdx.y;
+	if (x < tests_size && y < features_size && !used_features[y])
+	{
+		int node_id = node_id_of_test[x];
+		if (node_id < layer_size - 1)
+		{
+			return;
+		}
+		if (nodes[node_id].is_leaf)
+		{
+			errors[y * tests_size + x] = nodes[node_id].node_mse;
+			return;
+		}
+		float feature_value = features[y * tests_size + x];
+		float split_value = INF;
+		float l_sum = 0;
+		float r_sum = 0;
+		int l_size = 0;
+		int r_size = 0;
+		float l_avg = 0;
+		float r_avg = 0;
+		float l_err = 0;
+		float r_err = 0;
+		float cur_feature;
+		for (int i = 0; i < tests_size; i++)
+		{
+			if (node_id_of_test[i] == node_id)
+			{
+				/*if (i < x && abs(cur_feature_value - feature_value)  < EPS)
+				{
+					errors[y * tests_size + x] = INF;
+					return;
+				}*/
+				cur_feature = features[y * tests_size + i];
+				if (cur_feature >= feature_value && cur_feature < split_value)
+				{
+					split_value = cur_feature;
+				}
+				//split_value = fminf(split_value, fmaxf(feature_value, features[y * tests_size + i]));
+				if (cur_feature <= feature_value)
+				{
+					l_sum += answers[i];
+					l_size++;
+				}
+				else
+				{
+					r_sum += answers[i];
+					r_size++;
+				}
+			}
+		}
+		split_value = (feature_value + split_value) / 2.0 + EPS;
+		l_avg = (l_size > 0) ? (l_sum / l_size) : 0; 
+		r_avg = (r_size > 0) ? (r_sum / r_size) : 0; 
+		float cur_ans = 0;
+		for (int i = 0; i < tests_size; i++)
+		{
+			if (node_id_of_test[i] == node_id)
+			{
+				cur_ans = answers[i];
+				if (features[y * tests_size + i] < split_value)
+				{
+					l_err += ((cur_ans - l_avg) * (cur_ans - l_avg));
+				}
+				else
+				{
+					r_err += ((cur_ans - r_avg) * (cur_ans - r_avg));
+				}
+			}
+		}
+		l_err = (l_size > 0) ? (l_err / l_size) : 0;
+		r_err = (r_size > 0) ? (r_err / r_size) : 0;
+		errors[y * tests_size + x] = l_err + r_err;
+		split_values[y * tests_size + x] = split_value;
+	}
+}
+
 
 __global__ void calc_min_error(int* node_id_of_test, float* pre_errors, float* pre_split_values,
 							   float* errors, float* split_values, int tests_size, int features_size,
@@ -614,17 +721,15 @@ std::pair<int, float> tree::fill_layer()
 	dim3 block(BLOCK_SIZE, 1);
 	dim3 grid(1 + tests_size / (1 + BLOCK_SIZE), 1);
 	thrust::device_vector<int> node_id_of_test(tests_size);
-	//thrust::device_vector<int> is_tests_in_node(layer_size, 0);
 	fill_node_id_of_test<<<grid, block>>>(nodes, thrust::raw_pointer_cast(&node_id_of_test[0]), feature_id_at_depth,
 		features, tests_size, depth);
+	cudaDeviceSynchronize();
 	thrust::device_vector<float> pre_errors(tests_size * features_size, INF_INT);
 	thrust::device_vector<float> pre_split_values(tests_size * features_size, 0);
-	block.x = BLOCK_SIZE;
-	grid.x = 1 + tests_size / (1 + BLOCK_SIZE);
 	block.y = BLOCK_SIZE;
 	grid.y = 1 + features_size / (1 + BLOCK_SIZE);
 	cudaDeviceSynchronize();
-	calc_split_gpu<<<grid, block>>>(nodes, thrust::raw_pointer_cast(&node_id_of_test[0]),
+	calc_split_gpu2<<<grid, block>>>(nodes, thrust::raw_pointer_cast(&node_id_of_test[0]),
 		thrust::raw_pointer_cast(&pre_errors[0]), thrust::raw_pointer_cast(&pre_split_values[0]),
 		features, answers, tests_size, used_features, features_size, layer_size);
 	thrust::device_vector<float> errors(layer_size * features_size, INF_INT);
@@ -660,6 +765,7 @@ std::pair<int, float> tree::fill_layer()
 	{
 		errors[i * layer_size] = thrust::reduce(errors.begin() + i * layer_size,
 			errors.begin() + (i + 1) * layer_size, 0.0, thrust::plus<float>());
+		//std::cout << i << " # " << errors[i * layer_size] << std::endl;
 	}
 	cudaDeviceSynchronize();
 	thrust::device_vector<int> best_feature(1);

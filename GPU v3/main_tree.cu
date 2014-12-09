@@ -9,11 +9,11 @@ int main()
 	clock_t sum = 0;
 	for (int i = -1; i < 10; i++)
 	{
-		int features_size = 15;
+		int features_size = 21;
 		int tests_size = 1500;
 		clock_t time = clock();
 		data_set train_set("Prototask.train", features_size, tests_size, false);
-		tree t(train_set, 1000000);
+		tree t(train_set, 1000000, 6);
 		time = clock() - time;
 		if (i >= 0)
 		{

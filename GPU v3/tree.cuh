@@ -24,7 +24,7 @@ class tree
 {
 public:
 	//tree(const tree& other);
-	tree(data_set& train_set, int max_leafs);
+	tree(data_set& train_set, int max_leafs, int max_depth);
 	~tree();
 	float calculate_answer(test& _test);
 	//float calculate_error(data_set& test_set);
@@ -40,7 +40,6 @@ private:
 	int* feature_id_at_depth;
 	node* nodes; 
 	bool* used_features;
-	int max_leafs;
 	int leafs;
 	int depth;
 	int tests_size;

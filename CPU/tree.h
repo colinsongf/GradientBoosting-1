@@ -29,7 +29,7 @@ class tree
 {
 public:
 	tree(const tree& other);
-	tree(data_set& train_set, int max_leafs);
+	tree(data_set& train_set, int max_leafs, int max_depth);
 	~tree();
 	double calculate_anwser(test& _test);
 	double calculate_error(data_set& test_set);

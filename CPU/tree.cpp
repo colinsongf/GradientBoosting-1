@@ -131,7 +131,7 @@ tree::tree(const tree& other) : feature_id_at_depth(other.feature_id_at_depth), 
 	}
 }
 
-tree::tree(data_set& train_set, int max_leafs) : max_leafs(max_leafs)
+tree::tree(data_set& train_set, int max_leafs, int max_depth) : max_leafs(max_leafs)
 {
 	std::set<int> features;
 	for (size_t i = 0; i < train_set[0].features.size(); i++)
@@ -148,7 +148,7 @@ tree::tree(data_set& train_set, int max_leafs) : max_leafs(max_leafs)
 	std::vector<node*> layer;
 	layer.push_back(root);
 	layers.push_back(layer);
-	while (leafs < max_leafs && !features.empty())
+	while (leafs < max_leafs && depth < max_depth && !features.empty())
 	{
 		double min_error = INF;
 		int best_feature = -1;
