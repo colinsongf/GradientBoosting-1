@@ -8,7 +8,7 @@
 struct node
 {
 	__host__ __device__ node(const node& other);
-	__host__ __device__ node(int depth = 0);
+	__host__ __device__ node();
 	int depth;
 	float split_value;
 	float output_value;
@@ -43,7 +43,7 @@ struct my_pair
 class tree
 {
 public:
-	//tree(const tree& other);
+	tree(const tree& other);
 	tree(data_set& train_set, int max_leafs, int max_depth);
 	~tree();
 	float calculate_answer(test& _test);
@@ -51,19 +51,22 @@ public:
 	void print();
 private:
 	void make_layer(int depth);
-	void prune(int node_id);
+	//void prune(int node_id);
 	//void print(node* n);
 	//void fill_layers(node* n);
 	std::pair<int, float> fill_layer();
-	float* features;
-	float* answers;
-	int* feature_id_at_depth;
-	node* nodes; 
 	thrust::device_vector<my_tuple> sorted_tests;
+	float* features;
+	//float* answers;
+	int* feature_id_at_depth;
+	int* h_feature_id_at_depth;
+	node* nodes; 
+	node* h_nodes;
 	bool* used_features;
 	int leafs;
 	int depth;
 	int tests_size;
 	int features_size;
+	int max_depth;
 };
 #endif // TREE_H

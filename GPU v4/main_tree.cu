@@ -8,13 +8,15 @@
 int main()
 {
 	clock_t sum = 0;
+	int features_size = 21;
+	int tests_size = 1500;
+	data_set train_set("Prototask.train", features_size, tests_size, false);
 	for (int i = -1; i < 10; i++)
 	{
-		int features_size = 21;
-		int tests_size = 1500;
 		clock_t time = clock();
-		data_set train_set("Prototask.train", features_size, tests_size, false);
 		tree t(train_set, 1000000, 6);
+		//float err = t.calculate_answer(train_set.tests[0]);
+		//std::cout << "test err: " << err << std::endl;
 		time = clock() - time;
 		if (i >= 0)
 		{

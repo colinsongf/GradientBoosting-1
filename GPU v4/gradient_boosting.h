@@ -4,12 +4,11 @@
 #include <vector>
 #include "data_set.h"
 #include "tree.cuh"
-#include "test.h"
 
 class gradient_boosting
 {
 public:
-	gradient_boosting(data_set& train_set, int iterations, int max_leafs);
+	gradient_boosting(data_set& train_set, int iterations, int max_leafs, int max_depth);
 	float calculate_answer(test& _test);
 	float calculate_error(data_set& test_set);
 private:

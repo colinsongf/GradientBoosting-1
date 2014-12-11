@@ -37,12 +37,14 @@ __host__ __device__ node::node(const node& other) : depth(other.depth), is_leaf(
 	node_mse(other.node_mse), output_value(other.output_value), size(other.size), split_value(other.split_value),
 	subtree_mse(other.subtree_mse), sum(other.sum) {}
 
-__host__ __device__ node::node(int depth) : depth(depth)
+__host__ __device__ node::node()
 {
+	depth = 0;
 	is_leaf = false;
 	is_exists = true;
 	node_mse = 0;
 	size = 0;
+	sum = 0;
 }
 
 __host__ __device__ my_tuple::my_tuple(int test_id, int split_id, float feature, float answer) : test_id(test_id), split_id(split_id),
@@ -67,16 +69,13 @@ bool __host__ __device__ operator<(const my_pair& lhs, const my_pair& rhs)
 }
 	
 
-/*tree::tree(const tree& other) : feature_id_at_depth(other.feature_id_at_depth), leafs(other.leafs), max_leafs(other.max_leafs)
+tree::tree(const tree& other) : features_size(other.features_size), max_depth(other.max_depth)
 {
-	//TODO!
-	root = new node(*other.root);
-	layers.resize(feature_id_at_depth.size() + 1);
-	if (!layers.empty())
-	{
-		fill_layers(root);
-	}
-}*/
+	h_feature_id_at_depth = (int*)malloc(features_size * sizeof(int));
+	h_nodes = (node*)malloc((pow(2, max_depth + 1) - 1) * sizeof(node));
+	memcpy(h_feature_id_at_depth, other.h_feature_id_at_depth, features_size * sizeof(int));
+	memcpy(h_nodes, other.h_nodes, (pow(2, max_depth + 1) - 1) * sizeof(node));
+}
 
 __global__ void make_last_layer_gpu(node* nodes, int depth, int layer_size)
 {
@@ -87,17 +86,15 @@ __global__ void make_last_layer_gpu(node* nodes, int depth, int layer_size)
 	}
 }
 
-//__constant__ float const_answers[1500];
-
-tree::tree(data_set& train_set, int max_leafs, int max_depth)
+tree::tree(data_set& train_set, int max_leafs, int max_depth) : max_depth(max_depth)
 {
 	features_size = train_set.features_size;
 	tests_size = train_set.tests_size;
-	cudaMalloc(&nodes, (pow(2, features_size + 1) - 1) * sizeof(node));
+	cudaMalloc(&nodes, (pow(2, max_depth + 1) - 1) * sizeof(node));
 	cudaMalloc(&feature_id_at_depth, features_size * sizeof(int));
 	cudaMalloc(&used_features, features_size * sizeof(bool));
 	cudaMalloc(&features, features_size * tests_size * sizeof(float));
-	cudaMalloc(&answers, tests_size * sizeof(float));
+	//cudaMalloc(&answers, tests_size * sizeof(float));
 	cudaMemsetAsync(used_features, false, features_size * sizeof(bool));
 	std::set<int> features_set;
 	for (size_t i = 0; i < train_set.features_size; i++)
@@ -105,7 +102,7 @@ tree::tree(data_set& train_set, int max_leafs, int max_depth)
 		features_set.insert(i);
 	}
 	cudaMemcpyAsync(features, &train_set.features[0], sizeof(float) * tests_size * features_size, cudaMemcpyHostToDevice);
-	cudaMemcpyAsync(answers, &train_set.answers[0], sizeof(float) * tests_size, cudaMemcpyHostToDevice);
+	//cudaMemcpyAsync(answers, &train_set.answers[0], sizeof(float) * tests_size, cudaMemcpyHostToDevice);
 	std::vector<my_tuple> sorted(tests_size * features_size);
 	for (int i = 0; i < features_size; i++)
 	{
@@ -118,13 +115,10 @@ tree::tree(data_set& train_set, int max_leafs, int max_depth)
 		std::sort(sorted.begin() + i * tests_size, sorted.begin() + (i + 1) * tests_size);
 	}
 	sorted_tests = thrust::device_vector<my_tuple> (sorted);
-	//cudaMemcpyToSymbol(const_answers, &train_set.answers[0], sizeof(float) * tests_size);
 	auto start = std::chrono::high_resolution_clock::now();
 	leafs = 1;
 	depth = 0;
-	node root(0);
-	root.sum = 0;
-	root.size = 0;
+	node root;
 	for (int i = 0; i < tests_size; i++)
 	{
 		root.size++;
@@ -144,7 +138,7 @@ tree::tree(data_set& train_set, int max_leafs, int max_depth)
 		depth++;
 		old_error = new_error;
 		new_error = feature_and_error.second;
-		std::cout << "level " << depth << " created. training error: " << new_error << std::endl;
+		//std::cout << "level " << depth << " created. training error: " << new_error << std::endl;
 	}
 	dim3 block(BLOCK_SIZE, 1);
 	dim3 grid(1 + pow(2, depth) / (1 + BLOCK_SIZE), 1);
@@ -152,8 +146,20 @@ tree::tree(data_set& train_set, int max_leafs, int max_depth)
 	cudaDeviceSynchronize();
 	auto end = std::chrono::high_resolution_clock::now();
 	auto elapsed = end - start;
-	std::cout << "leafs before pruning: " << leafs << std::endl;
-	std::cout << "calculating time in ms: " << std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count() << std::endl;
+	//std::cout << "leafs before pruning: " << leafs << std::endl;
+	//std::cout << "new tree! calculating time in ms: " << std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count() << std::endl;
+	
+	h_feature_id_at_depth = (int*)malloc(features_size * sizeof(int));
+	h_nodes = (node*)malloc((pow(2, max_depth + 1) - 1) * sizeof(node));
+	cudaMemcpyAsync(h_feature_id_at_depth, feature_id_at_depth, features_size * sizeof(int), cudaMemcpyDeviceToHost);
+	cudaMemcpyAsync(h_nodes, nodes, (pow(2, max_depth + 1) - 1) * sizeof(node), cudaMemcpyDeviceToHost);
+	cudaDeviceSynchronize();
+	sorted_tests.clear();
+	cudaFree(nodes);
+	cudaFree(feature_id_at_depth);
+	cudaFree(used_features);
+	cudaFree(features);
+	
 	//prune(0);                                         //*******************TODO!!
 	//std::cout << "new tree! leafs after pruning: " << leafs << std::endl;
 }
@@ -164,24 +170,26 @@ tree::~tree()
 	cudaFree(feature_id_at_depth);
 	cudaFree(used_features);
 	cudaFree(features);
-	cudaFree(answers);
+	//cudaFree(answers);
+	free(h_feature_id_at_depth);
+	free(h_nodes);
 	//delete_node(root);
 }
 
 float tree::calculate_answer(test& _test)
 {
 	int cur_id = 0;
-	node cur = nodes[cur_id];
+	node cur = h_nodes[cur_id];
 	while (!cur.is_leaf)
 	{
-		if (_test.features[feature_id_at_depth[cur.depth]] < cur.split_value)
+		if (_test.features[h_feature_id_at_depth[cur.depth]] < cur.split_value)
 		{
-			cur = nodes[cur_id * 2 + 1];
+			cur = h_nodes[cur_id * 2 + 1];
 			cur_id = cur_id * 2 + 1;
 		}
 		else
 		{
-			cur = nodes[cur_id * 2 + 2];
+			cur = h_nodes[cur_id * 2 + 2];
 			cur_id = cur_id * 2 + 2;
 		}
 	}
@@ -235,8 +243,6 @@ __global__ void make_layer_gpu(node* nodes, int begin_id, int end_id, int* new_l
 		int i = begin_id + x;
 		if (!nodes[i].is_leaf && nodes[i].is_exists)
 		{
-			nodes[2 * i + 1].node_mse = 0;
-			nodes[2 * i + 2].node_mse = 0;
 			nodes[2 * i + 1].is_leaf = false;
 			nodes[2 * i + 2].is_leaf = false;
 			nodes[2 * i + 1].is_exists = true;
@@ -265,7 +271,7 @@ void tree::make_layer(int depth)
 	leafs += thrust::reduce(new_leafs.begin(), new_leafs.end());
 }
 
-__device__ void calc_subtree_mse(node* nodes, int node_id, float* features, float* answers,
+/*__device__ void calc_subtree_mse(node* nodes, int node_id, float* features, float* answers,
 								 int tests_size, int* feature_id_at_depth)
 {
 	float error = 0;
@@ -291,9 +297,9 @@ __device__ void calc_subtree_mse(node* nodes, int node_id, float* features, floa
 	}
 	error /= (1.0 * nodes[node_id].size);
 	nodes[node_id].subtree_mse = error;
-}
+}*/
 
-__global__ void prune_gpu(node* nodes, int node_id, bool* need_go_deeper, float* features, float* answers, int tests_size,
+/*__global__ void prune_gpu(node* nodes, int node_id, bool* need_go_deeper, float* features, float* answers, int tests_size,
 						  int* feature_id_at_depth, int* new_leafs)
 {
 	*need_go_deeper = false;
@@ -313,9 +319,9 @@ __global__ void prune_gpu(node* nodes, int node_id, bool* need_go_deeper, float*
 			*need_go_deeper = true;
 		}
 	}
-}
+}*/
 
-void tree::prune(int node_id)
+/*void tree::prune(int node_id)
 {
 	thrust::device_vector<int> new_leafs((pow(2, features_size + 1) - 1));
 	bool* need_go_deeper;
@@ -334,7 +340,7 @@ void tree::prune(int node_id)
 		prune(2 * node_id + 1);
 		prune(2 * node_id + 2);
 	}
-}
+}*/
 
 /*void tree::print(node* n)
 {

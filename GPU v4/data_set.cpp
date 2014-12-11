@@ -13,21 +13,32 @@ data_set::data_set(std::string file_name, int features_size, int tests_size, boo
 	{
 		getline(data_stream, line);
 		std::istringstream iss(line);
+		float ans;
+		float feature;
+		std::vector<float> temp;
 		if (is_class_first)
 		{
-			iss >> answers[i];
+			iss >> ans;
+			answers[i] = ans;
 			for (int j = 0; j < features_size; j++)
 			{
-				iss >> features[j * tests_size + i];
+				iss >> feature;
+				features[j * tests_size + i] = feature;
+				temp.push_back(feature);
 			}
+			tests.push_back(test(temp, ans));
 		}
 		else
 		{
 			for (int j = 0; j < features_size; j++)
 			{
-				iss >> features[j * tests_size + i];
+				iss >> feature;
+				features[j * tests_size + i] = feature;
+				temp.push_back(feature);
 			}
-			iss >> answers[i];
+			iss >> ans;
+			answers[i] = ans;
+			tests.push_back(test(temp, ans));
 		}
 	}
 }
