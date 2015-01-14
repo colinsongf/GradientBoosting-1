@@ -5,8 +5,8 @@
 
 struct test
 {
-	test(std::vector<double> const& features, double anwser = 0.0);
-	std::vector<double> features;
-	double anwser;
+	test(std::vector<float> const& features, float anwser = 0.0);
+	std::vector<float> features;
+	float anwser;
 };
 #endif // TEST_H

@@ -47,7 +47,7 @@ public:
 	tree(data_set& train_set, int max_leafs, int max_depth);
 	~tree();
 	float calculate_answer(test& _test);
-	//float calculate_error(data_set& test_set);
+	float calculate_error(data_set& test_set);
 	void print();
 private:
 	void make_layer(int depth);

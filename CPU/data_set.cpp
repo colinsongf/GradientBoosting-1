@@ -9,9 +9,9 @@ data_set::data_set(std::string file_name, int features_size, bool is_class_first
 	std::string line;
 	while (getline(data_stream, line))
 	{
-		std::vector<double> features;
-		double value;
-		double ans;
+		std::vector<float> features;
+		float value;
+		float ans;
 		std::istringstream iss(line);
 		while (iss >> value)
 		{

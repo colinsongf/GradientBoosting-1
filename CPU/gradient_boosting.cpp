@@ -1,5 +1,6 @@
 #include <cmath>
 #include "gradient_boosting.h"
+#include <cstdio>
 
 gradient_boosting::gradient_boosting(data_set& train_set, int iterations, int max_leafs, int max_depth) : train_set(train_set)
 {
@@ -7,15 +8,16 @@ gradient_boosting::gradient_boosting(data_set& train_set, int iterations, int ma
 	coefficients.push_back(1.0);
 	for (int i = 0; i < iterations; i++)
 	{
+		printf("iter #%d\n", i);
 		data_set pseudo_residuals = get_pseudo_residuals_set();
 		trees.push_back(tree(pseudo_residuals, max_leafs, max_depth));
 		coefficients.push_back(calculate_coefficient());
 	}
 }
 
-double gradient_boosting::calculate_anwser(test& _test)
+float gradient_boosting::calculate_anwser(test& _test)
 {
-	double ans = 0;
+	float ans = 0;
 	for (size_t i = 0; i < size(); i++)
 	{
 		ans += coefficients[i] * trees[i].calculate_anwser(_test);
@@ -23,12 +25,12 @@ double gradient_boosting::calculate_anwser(test& _test)
 	return ans;
 }
 
-double gradient_boosting::calculate_error(data_set& test_set)
+float gradient_boosting::calculate_error(data_set& test_set)
 {
-	double error = 0;
+	float error = 0;
 	for (data_set::iterator cur_test = test_set.begin(); cur_test != test_set.end(); cur_test++)
 	{
-		double ans = calculate_anwser(*cur_test);
+		float ans = calculate_anwser(*cur_test);
 		error += ((ans - cur_test->anwser) * (ans - cur_test->anwser));
 	}
 	error /= (1.0 * test_set.size());
@@ -45,16 +47,16 @@ data_set gradient_boosting::get_pseudo_residuals_set()
 	return pseudo_residuals;
 }
 
-double gradient_boosting::calculate_coefficient() // golden section search
+float gradient_boosting::calculate_coefficient() // golden section search
 {
-	double left = -1e5;
-	double right = 1e5;
-	double phi = (1.0 + sqrt(5.0)) / 2.0;
-	double eps = 1e-5;
-	double x1 = right - (right - left) / phi;
-	double x2 = left + (right - left) / phi;
-	double y1 = calculate_loss_function(x1);
-	double y2 = calculate_loss_function(x2);
+	float left = 0;
+	float right = 1;
+	float phi = (1.0 + sqrt(5.0)) / 2.0;
+	float eps = 1e-2;
+	float x1 = right - (right - left) / phi;
+	float x2 = left + (right - left) / phi;
+	float y1 = calculate_loss_function(x1);
+	float y2 = calculate_loss_function(x2);
 	while (abs(right - left) > eps)
 	{
 		if (y1 >= y2)
@@ -77,12 +79,12 @@ double gradient_boosting::calculate_coefficient() // golden section search
 	return (left + right) / 2.0;
 }
 
-double gradient_boosting::calculate_loss_function(double arg)
+float gradient_boosting::calculate_loss_function(float arg)
 {
-	double loss = 0;
+	float loss = 0;
 	for (data_set::iterator cur_test = train_set.begin(); cur_test != train_set.end(); cur_test++)
 	{
-		double ans = calculate_anwser(*cur_test) + arg * trees.back().calculate_anwser(*cur_test);
+		float ans = calculate_anwser(*cur_test) + arg * trees.back().calculate_anwser(*cur_test);
 		loss += ((ans - cur_test->anwser) * (ans - cur_test->anwser));
 	}
 	return 0.5 * loss;

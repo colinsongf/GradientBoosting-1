@@ -138,7 +138,7 @@ tree::tree(data_set& train_set, int max_leafs, int max_depth) : max_depth(max_de
 		depth++;
 		old_error = new_error;
 		new_error = feature_and_error.second;
-		//std::cout << "level " << depth << " created. training error: " << new_error << std::endl;
+		//std::cout << "level " << depth << " created. training error: " << new_error << " best_feat: " << feature_and_error.first << std::endl;
 	}
 	dim3 block(BLOCK_SIZE, 1);
 	dim3 grid(1 + pow(2, depth) / (1 + BLOCK_SIZE), 1);
@@ -196,17 +196,17 @@ float tree::calculate_answer(test& _test)
 	return cur.output_value;
 }
 
-//float tree::calculate_error(data_set& test_set)
-//{
-//	float error = 0;
-//	for (data_set::iterator cur_test = test_set.begin(); cur_test != test_set.end(); cur_test++)
-//	{
-//		float ans = calculate_answer(*cur_test);
-//		error += ((ans - cur_test->answer) * (ans - cur_test->answer));
-//	}
-//	error /= (1.0 * test_set.size());
-//	return error;
-//}
+float tree::calculate_error(data_set& test_set)
+{
+	float error = 0;
+	for (int i = 0; i < test_set.tests_size; i++)
+	{
+		float ans = calculate_answer(test_set.tests[i]);
+		error += ((ans - test_set.answers[i]) * (ans - test_set.answers[i]));
+	}
+	error /= (1.0 * test_set.tests_size);
+	return error;
+}
 
 /*void tree::print()
 {
@@ -390,6 +390,7 @@ __global__ void fill_node_id_of_test(node* nodes, int* node_id_of_test, int* fea
 			}
 		}
 		node_id_of_test[i] = cur;
+		//printf("node %d test %d\n", cur, i);
 	}
 }
 
@@ -404,6 +405,7 @@ __global__ void fill_split_ids(int* node_id_of_test, my_tuple* sorted_tests, int
 		if (id_shifted >= 0)
 		{
 			sorted_tests[y * tests_size + x].split_id = 1 << id_shifted;
+			//printf("test %d feat %d split_id %d\n", x, y, sorted_tests[y * tests_size + x].split_id);
 		}
 	}
 }    
@@ -436,15 +438,15 @@ __global__ void calc_split_gpu(int* node_id_of_test, my_pair* errors, int tests_
 		{
 			sorted_tests_shared[threadIdx.y][threadIdx.x] = sorted_tests[y * tests_size + id * BLOCK_SIZE + threadIdx.x];
 			__syncthreads();
-			int i;
-			for (i = 0; i < BLOCK_SIZE && id * BLOCK_SIZE + threadIdx.x <= x; i++)
+			int i = 0;
+			for (; i < BLOCK_SIZE && id * BLOCK_SIZE + i <= x; i++)
 			{
 				cur_my_tuple = sorted_tests_shared[threadIdx.y][i];
 				int exists = (cur_my_tuple.split_id >> node_split_id_shifted) & 1;
 				l_sum += exists * cur_my_tuple.answer;
 				l_size += exists;
 			}
-			for (; i < BLOCK_SIZE && id * BLOCK_SIZE + threadIdx.x < tests_size; i++)
+			for (; i < BLOCK_SIZE && id * BLOCK_SIZE + i < tests_size; i++)
 			{
 				cur_my_tuple = sorted_tests_shared[threadIdx.y][i];
 				int exists = (cur_my_tuple.split_id >> node_split_id_shifted) & 1;
@@ -459,15 +461,15 @@ __global__ void calc_split_gpu(int* node_id_of_test, my_pair* errors, int tests_
 		{
 			sorted_tests_shared[threadIdx.y][threadIdx.x] = sorted_tests[y * tests_size + id * BLOCK_SIZE + threadIdx.x];
 			__syncthreads();
-			int i;
-			for (i = 0; i < BLOCK_SIZE && id * BLOCK_SIZE + threadIdx.x <= x; i++)
+			int i = 0;
+			for (; i < BLOCK_SIZE && id * BLOCK_SIZE + i <= x; i++)
 			{
 				cur_my_tuple = sorted_tests_shared[threadIdx.y][i];
 				int exists = (cur_my_tuple.split_id >> node_split_id_shifted) & 1;
 				float diff = cur_my_tuple.answer - l_avg;
 				l_err += exists * pow(diff, 2); 
 			}
-			for (; i < BLOCK_SIZE && id * BLOCK_SIZE + threadIdx.x < tests_size; i++)
+			for (; i < BLOCK_SIZE && id * BLOCK_SIZE + i < tests_size; i++)
 			{
 				cur_my_tuple = sorted_tests_shared[threadIdx.y][i];
 				int exists = (cur_my_tuple.split_id >> node_split_id_shifted) & 1;
@@ -479,6 +481,7 @@ __global__ void calc_split_gpu(int* node_id_of_test, my_pair* errors, int tests_
 		l_err = (l_size > 0) ? (l_err / l_size) : 0;
 		r_err = (r_size > 0) ? (r_err / r_size) : 0;
 		errors[y * tests_size + x] = my_pair(x, l_err + r_err);
+		//printf("test: %d feat: %d err: %f l_s: %d r_s: %d l_err: %f r_err: %f\n", x, y, (float)(l_err + r_err), l_size, r_size, l_err, r_err);
 	}
 }
 
@@ -570,6 +573,7 @@ __global__ void make_split_gpu(node* nodes, float* split_values,
 		int best_f = best_feature[0];
 		float split_value = split_values[best_f * layer_size + x];
 		nodes[node_id].split_value = split_value;
+		//printf("split_val: %f\n", split_value);
 		float l_sum = 0;
 		float r_sum = 0;
 		int l_size = 0;

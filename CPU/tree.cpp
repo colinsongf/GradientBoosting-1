@@ -5,9 +5,9 @@
 
 #define INF 1e10
 
-double calc_mse(data_set::iterator data_begin, data_set::iterator data_end, double avg, double n)
+float calc_mse(data_set::iterator data_begin, data_set::iterator data_end, float avg, float n)
 {
-	double ans = 0;
+	float ans = 0;
 	if (n == 0)
 	{
 		return ans;
@@ -53,7 +53,7 @@ void node::calc_avg()
 	output_value = sum / size;
 }
 
-double node::split(int split_feature_id)
+float node::split(int split_feature_id)
 {
 	if (is_leaf)
 	{
@@ -63,11 +63,11 @@ double node::split(int split_feature_id)
 	{
 		return t1.features[split_feature_id] < t2.features[split_feature_id];
 	});
-	double l_sum = 0;
-	double l_size = 0;
-	double r_sum = sum;
-	double r_size = size;
-	double best_mse = INF; 
+	float l_sum = 0;
+	float l_size = 0;
+	float r_sum = sum;
+	float r_size = size;
+	float best_mse = INF; 
 	for (data_set::iterator cur_test = data_begin + 1; cur_test != data_end; cur_test++) //try all possible splits
 	{
 		l_sum += (cur_test - 1)->anwser;
@@ -78,11 +78,11 @@ double node::split(int split_feature_id)
 		{
 			continue;
 		}
-		double l_avg = l_sum / l_size;
-		double r_avg = r_sum / r_size;
-		double l_mse = calc_mse(data_begin, cur_test, l_avg, l_size);
-		double r_mse = calc_mse(cur_test, data_end, r_avg, r_size);
-		double cur_mse = l_mse + r_mse;
+		float l_avg = l_sum / l_size;
+		float r_avg = r_sum / r_size;
+		float l_mse = calc_mse(data_begin, cur_test, l_avg, l_size);
+		float r_mse = calc_mse(cur_test, data_end, r_avg, r_size);
+		float cur_mse = l_mse + r_mse;
 		if (cur_mse < best_mse)
 		{
 			best_mse = cur_mse;
@@ -150,13 +150,13 @@ tree::tree(data_set& train_set, int max_leafs, int max_depth) : max_leafs(max_le
 	layers.push_back(layer);
 	while (leafs < max_leafs && depth < max_depth && !features.empty())
 	{
-		double min_error = INF;
+		float min_error = INF;
 		int best_feature = -1;
 		make_layer(depth);
 		for (std::set<int>::iterator cur_split_feature = features.begin(); cur_split_feature != features.end(); cur_split_feature++)
 		//choose best split feature at current depth
 		{
-			double cur_error = 0;
+			float cur_error = 0;
 			for (size_t i = 0; i < layers[depth].size(); i++)
 			{
 				cur_error += layers[depth][i]->split(*cur_split_feature);
@@ -174,15 +174,16 @@ tree::tree(data_set& train_set, int max_leafs, int max_depth) : max_leafs(max_le
 		feature_id_at_depth.push_back(best_feature);
 		features.erase(best_feature);
 		depth++;
-		std::cout << "level " << depth << " created. training error: " << min_error << std::endl;
+		//std::cout << "level " << depth << " created. training error: " << min_error << " best feat: " << best_feature << " split_val: "
+			//<< root->split_value << std::endl;
 	}
 	for (size_t i = 0; i < layers.back().size(); i++)
 	{
 		layers.back()[i]->is_leaf = true;
 	}
-	std::cout << "leafs before pruning: " << leafs << std::endl;
-	prune(root);
-	std::cout << "new tree! leafs after pruning: " << leafs << std::endl;
+	//std::cout << "leafs before pruning: " << leafs << std::endl;
+	//prune(root);
+	//std::cout << "new tree! leafs after pruning: " << leafs << std::endl;
 	while (layers.back().empty())
 	{
 		layers.pop_back();
@@ -194,7 +195,7 @@ tree::~tree()
 	delete_node(root);
 }
 
-double tree::calculate_anwser(test& _test)
+float tree::calculate_anwser(test& _test)
 {
 	node* cur = root;
 	while (!cur->is_leaf)
@@ -204,12 +205,12 @@ double tree::calculate_anwser(test& _test)
 	return cur->output_value;
 }
 
-double tree::calculate_error(data_set& test_set)
+float tree::calculate_error(data_set& test_set)
 {
-	double error = 0;
+	float error = 0;
 	for (data_set::iterator cur_test = test_set.begin(); cur_test != test_set.end(); cur_test++)
 	{
-		double ans = calculate_anwser(*cur_test);
+		float ans = calculate_anwser(*cur_test);
 		error += ((ans - cur_test->anwser) * (ans - cur_test->anwser));
 	}
 	error /= (1.0 * test_set.size());
@@ -294,7 +295,7 @@ void tree::prune(node* n)
 
 void tree::calc_subtree_mse(node* n)
 {
-	double error = 0;
+	float error = 0;
 	for (data_set::iterator cur_test = n->data_begin; cur_test != n->data_end; cur_test++)
 	{
 		node* cur_node = n;
@@ -302,7 +303,7 @@ void tree::calc_subtree_mse(node* n)
 		{
 			cur_node = cur_test->features[feature_id_at_depth[cur_node->depth]] < cur_node->split_value ? cur_node->left : cur_node->right;
 		}
-		double ans = cur_node->output_value;
+		float ans = cur_node->output_value;
 		error += ((ans - cur_test->anwser) * (ans - cur_test->anwser));
 	}
 	error /= (1.0 * n->size);

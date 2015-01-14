@@ -10,16 +10,16 @@ struct node
 	node(const node& other);
 	node(int depth);
 	void calc_avg();
-	double split(int split_feature_id);
+	float split(int split_feature_id);
 	node* left;
 	node* right;
 	int depth;
-	double split_value;
-	double output_value;
-	double sum;
-	double size;
-	double node_mse;
-	double subtree_mse;
+	float split_value;
+	float output_value;
+	float sum;
+	float size;
+	float node_mse;
+	float subtree_mse;
 	bool is_leaf;
 	data_set::iterator data_begin;
 	data_set::iterator data_end;
@@ -31,8 +31,8 @@ public:
 	tree(const tree& other);
 	tree(data_set& train_set, int max_leafs, int max_depth);
 	~tree();
-	double calculate_anwser(test& _test);
-	double calculate_error(data_set& test_set);
+	float calculate_anwser(test& _test);
+	float calculate_error(data_set& test_set);
 	void print();
 private:
 	void delete_node(node* n);
