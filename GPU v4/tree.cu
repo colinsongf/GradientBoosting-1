@@ -3,13 +3,12 @@
 #include <iostream>
 #include <string>
 #include <cmath>
-#include <chrono>
 #include <vector>
-#include <thrust\reduce.h>
-#include <thrust\replace.h>
-#include <thrust\execution_policy.h>
+#include <thrust/reduce.h>
+#include <thrust/replace.h>
+#include <thrust/execution_policy.h>
 #include "device_launch_parameters.h"
-#include <thrust\host_vector.h>
+#include <thrust/host_vector.h>
 #include "tree.cuh"
 
 #define INF 1e6
@@ -115,7 +114,7 @@ tree::tree(data_set& train_set, int max_leafs, int max_depth) : max_depth(max_de
 		std::sort(sorted.begin() + i * tests_size, sorted.begin() + (i + 1) * tests_size);
 	}
 	sorted_tests = thrust::device_vector<my_tuple> (sorted);
-	auto start = std::chrono::high_resolution_clock::now();
+	//auto start = std::chrono::high_resolution_clock::now();
 	leafs = 1;
 	depth = 0;
 	node root;
@@ -144,8 +143,8 @@ tree::tree(data_set& train_set, int max_leafs, int max_depth) : max_depth(max_de
 	dim3 grid(1 + pow(2, depth) / (1 + BLOCK_SIZE), 1);
 	make_last_layer_gpu<<<grid, block>>>(nodes, depth, pow(2, depth));
 	cudaDeviceSynchronize();
-	auto end = std::chrono::high_resolution_clock::now();
-	auto elapsed = end - start;
+	//auto end = std::chrono::high_resolution_clock::now();
+	//auto elapsed = end - start;
 	//std::cout << "leafs before pruning: " << leafs << std::endl;
 	//std::cout << "new tree! calculating time in ms: " << std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count() << std::endl;
 	

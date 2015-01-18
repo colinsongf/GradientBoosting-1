@@ -1,5 +1,6 @@
 #include <sstream>
 #include <fstream>
+#include <iostream>
 #include "data_set.h"
 
 data_set::data_set(std::string file_name, int features_size, int tests_size, bool is_class_first)
@@ -7,7 +8,7 @@ data_set::data_set(std::string file_name, int features_size, int tests_size, boo
 {
 	answers.resize(tests_size);
 	features.resize(features_size * tests_size);
-	std::ifstream data_stream(file_name);
+	std::ifstream data_stream(file_name.c_str());
 	std::string line;
 	for (int i = 0; i < tests_size; i++)
 	{

@@ -1,7 +1,7 @@
 #include <cmath>
-#include "gradient_boosting.h"
 #include <cstdio>
 #include <ctime>
+#include "gradient_boosting.cuh"
 
 gradient_boosting::gradient_boosting(data_set& train_set, int iterations, int max_leafs, int max_depth) : train_set(train_set)
 {
@@ -19,12 +19,12 @@ gradient_boosting::gradient_boosting(data_set& train_set, int iterations, int ma
 	}
 }
 
-float gradient_boosting::calculate_anwser(test& _test)
+float gradient_boosting::calculate_answer(test& _test)
 {
 	float ans = 0;
 	for (size_t i = 0; i < size(); i++)
 	{
-		ans += coefficients[i] * trees[i].calculate_anwser(_test);
+		ans += coefficients[i] * trees[i].calculate_answer(_test);
 	}
 	return ans;
 }
@@ -32,21 +32,23 @@ float gradient_boosting::calculate_anwser(test& _test)
 float gradient_boosting::calculate_error(data_set& test_set)
 {
 	float error = 0;
-	for (data_set::iterator cur_test = test_set.begin(); cur_test != test_set.end(); cur_test++)
+	for (int i = 0; i < test_set.tests_size; i++)
 	{
-		float ans = calculate_anwser(*cur_test);
-		error += ((ans - cur_test->anwser) * (ans - cur_test->anwser));
+		float ans = calculate_answer(test_set.tests[i]);
+		error += ((ans - test_set.answers[i]) * (ans - test_set.answers[i]));
 	}
-	error /= (1.0 * test_set.size());
+	error /= (1.0 * test_set.tests_size);
 	return error;
 }
 
 data_set gradient_boosting::get_pseudo_residuals_set()
 {
 	data_set pseudo_residuals(train_set);
-	for (data_set::iterator cur_test = pseudo_residuals.begin(); cur_test != pseudo_residuals.end(); cur_test++)
+	for (int i = 0; i < pseudo_residuals.tests_size; i++)
 	{
-		cur_test->anwser -= calculate_anwser(*cur_test);
+		float ans = calculate_answer(pseudo_residuals.tests[i]);
+		pseudo_residuals.tests[i].answer -= ans;
+		pseudo_residuals.answers[i] -= ans;
 	}
 	return pseudo_residuals;
 }
@@ -86,10 +88,10 @@ float gradient_boosting::calculate_coefficient() // golden section search
 float gradient_boosting::calculate_loss_function(float arg)
 {
 	float loss = 0;
-	for (data_set::iterator cur_test = train_set.begin(); cur_test != train_set.end(); cur_test++)
+	for (int i = 0; i < train_set.tests_size; i++)
 	{
-		float ans = calculate_anwser(*cur_test) + arg * trees.back().calculate_anwser(*cur_test);
-		loss += ((ans - cur_test->anwser) * (ans - cur_test->anwser));
+		float ans = calculate_answer(train_set.tests[i]) + arg * trees.back().calculate_answer(train_set.tests[i]);
+		loss += ((ans - train_set.answers[i]) * (ans - train_set.answers[i]));
 	}
 	return 0.5 * loss;
 }

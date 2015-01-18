@@ -1,7 +1,9 @@
 #include <iostream>
+#include <cstdio>
 #include <ctime>
 
-#include "gradient_boosting.h"
+#include "gradient_boosting.cuh"
+
 
 
 int main()
@@ -22,7 +24,7 @@ int main()
 	for (int i = -1; i < 1; i++)
 	{
 		clock_t time = clock();
-		gradient_boosting grad_boost(train_set, 500, 1000000, 4);
+		gradient_boosting grad_boost(train_set, 200, 1000000, 4);
 		time = clock() - time;
 		if (i >= 0)
 		{

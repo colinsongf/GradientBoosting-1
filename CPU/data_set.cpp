@@ -5,7 +5,7 @@
 
 data_set::data_set(std::string file_name, int features_size, bool is_class_first)
 {
-	std::ifstream data_stream(file_name);
+	std::ifstream data_stream(file_name.c_str());
 	std::string line;
 	while (getline(data_stream, line))
 	{

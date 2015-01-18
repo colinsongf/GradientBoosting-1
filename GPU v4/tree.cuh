@@ -1,7 +1,7 @@
 #ifndef TREE_H
 #define TREE_H
 
-#include "thrust\device_vector.h"
+#include "thrust/device_vector.h"
 #include "data_set.h"
 #include "test.h"
 
