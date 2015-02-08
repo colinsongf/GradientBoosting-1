@@ -20,6 +20,17 @@ struct node
 	bool is_exists;
 };
 
+struct node_ptr
+{
+	node_ptr();
+	node_ptr* left;
+	node_ptr* right;
+	int depth;
+	float split_value;
+	float output_value;
+	bool is_leaf;
+};
+
 struct my_tuple
 {
 	__host__ __device__ my_tuple(int test_id, int split_id, float feature, float answer);
@@ -51,6 +62,8 @@ public:
 	void print();
 private:
 	void make_layer(int depth);
+	void make_tree_ptr();
+	void fill_node_ptr(node_ptr* n, int node_id);
 	//void prune(int node_id);
 	//void print(node* n);
 	//void fill_layers(node* n);
@@ -62,6 +75,7 @@ private:
 	int* h_feature_id_at_depth;
 	node* nodes; 
 	node* h_nodes;
+	node_ptr* root;
 	bool* used_features;
 	int leafs;
 	int depth;

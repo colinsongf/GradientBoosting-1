@@ -32,6 +32,8 @@ float calc_root_mse(data_set& train_set,  float avg, float n)
 	return ans;
 }
 
+node_ptr::node_ptr() {}
+
 __host__ __device__ node::node(const node& other) : depth(other.depth), is_leaf(other.is_leaf), is_exists(other.is_exists),
 	node_mse(other.node_mse), output_value(other.output_value), size(other.size), split_value(other.split_value),
 	subtree_mse(other.subtree_mse), sum(other.sum) {}
@@ -153,6 +155,7 @@ tree::tree(data_set& train_set, int max_leafs, int max_depth) : max_depth(max_de
 	cudaMemcpyAsync(h_feature_id_at_depth, feature_id_at_depth, features_size * sizeof(int), cudaMemcpyDeviceToHost);
 	cudaMemcpyAsync(h_nodes, nodes, (pow(2, max_depth + 1) - 1) * sizeof(node), cudaMemcpyDeviceToHost);
 	cudaDeviceSynchronize();
+	make_tree_ptr();
 	sorted_tests.clear();
 	cudaFree(nodes);
 	cudaFree(feature_id_at_depth);
@@ -177,7 +180,7 @@ tree::~tree()
 
 float tree::calculate_answer(test& _test)
 {
-	int cur_id = 0;
+	/*int cur_id = 0;
 	node cur = h_nodes[cur_id];
 	while (!cur.is_leaf)
 	{
@@ -193,6 +196,14 @@ float tree::calculate_answer(test& _test)
 		}
 	}
 	return cur.output_value;
+	*/
+
+	node_ptr* cur = root;
+	while (!cur->is_leaf)
+	{
+		cur = _test.features[h_feature_id_at_depth[cur->depth]] < cur->split_value ? cur->left : cur->right;
+	}
+	return cur->output_value;
 }
 
 float tree::calculate_error(data_set& test_set)
@@ -712,4 +723,26 @@ std::pair<int, float> tree::fill_layer()
 		tests_size, layer_size, thrust::raw_pointer_cast(&sorted_tests_ids[0]), thrust::raw_pointer_cast(&sorted_tests[0]));
 	cudaDeviceSynchronize();
 	return std::make_pair(best_feature[0], best_error[0]);
+}
+
+void tree::make_tree_ptr()
+{
+	root = new node_ptr();
+	fill_node_ptr(root, 0);
+}
+
+void tree::fill_node_ptr(node_ptr* n, int node_id)
+{
+	node cur = h_nodes[node_id];
+	n->depth = cur.depth;
+	n->is_leaf = cur.is_leaf;
+	n->output_value = cur.output_value;
+	n->split_value = cur.output_value;
+	if (!cur.is_leaf)
+	{
+		node_ptr* l = new node_ptr();
+		node_ptr* r = new node_ptr();
+		fill_node_ptr(l, 2 * node_id + 1);
+		fill_node_ptr(r, 2 * node_id + 2);
+	}
 }

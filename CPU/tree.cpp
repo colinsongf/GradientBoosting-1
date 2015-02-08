@@ -53,16 +53,22 @@ void node::calc_avg()
 	output_value = sum / size;
 }
 
+struct test_comparator {
+	int split_feature_id;
+	test_comparator(int split_feature_id) : split_feature_id(split_feature_id) {}
+	bool operator()(test t1, test t2)
+	{
+		return t1.features[split_feature_id] < t2.features[split_feature_id];
+	}
+};
+
 float node::split(int split_feature_id)
 {
 	if (is_leaf)
 	{
 		return calc_mse(data_begin, data_end, output_value, size);
 	}
-	std::sort(data_begin, data_end, [&split_feature_id](test t1, test t2)
-	{
-		return t1.features[split_feature_id] < t2.features[split_feature_id];
-	});
+	std::sort(data_begin, data_end, test_comparator(split_feature_id));
 	float l_sum = 0;
 	float l_size = 0;
 	float r_sum = sum;
