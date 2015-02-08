@@ -737,7 +737,7 @@ void tree::fill_node_ptr(node_ptr* n, int node_id)
 	n->depth = cur.depth;
 	n->is_leaf = cur.is_leaf;
 	n->output_value = cur.output_value;
-	n->split_value = cur.output_value;
+	n->split_value = cur.split_value;
 	if (!cur.is_leaf)
 	{
 		node_ptr* l = new node_ptr();
