@@ -744,5 +744,7 @@ void tree::fill_node_ptr(node_ptr* n, int node_id)
 		node_ptr* r = new node_ptr();
 		fill_node_ptr(l, 2 * node_id + 1);
 		fill_node_ptr(r, 2 * node_id + 2);
+		n->left = l;
+		n->right = r;
 	}
 }
