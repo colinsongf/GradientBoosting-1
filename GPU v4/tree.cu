@@ -34,6 +34,20 @@ float calc_root_mse(data_set& train_set,  float avg, float n)
 
 node_ptr::node_ptr() {}
 
+node_ptr::node_ptr(const node_ptr& other) : depth(other.depth), is_leaf(other.is_leaf),
+	output_value(other.output_value), split_value(other.split_value)
+{
+	if (!is_leaf)
+	{
+		left = new node_ptr(*other.left);
+		right = new node_ptr(*other.right);
+	}
+	else
+	{
+		left = right = NULL;
+	}
+}
+
 __host__ __device__ node::node(const node& other) : depth(other.depth), is_leaf(other.is_leaf), is_exists(other.is_exists),
 	node_mse(other.node_mse), output_value(other.output_value), size(other.size), split_value(other.split_value),
 	subtree_mse(other.subtree_mse), sum(other.sum) {}
@@ -72,10 +86,12 @@ bool __host__ __device__ operator<(const my_pair& lhs, const my_pair& rhs)
 
 tree::tree(const tree& other) : features_size(other.features_size), max_depth(other.max_depth)
 {
+	root = new node_ptr(*other.root);
 	h_feature_id_at_depth = (int*)malloc(features_size * sizeof(int));
 	h_nodes = (node*)malloc((pow(2, max_depth + 1) - 1) * sizeof(node));
 	memcpy(h_feature_id_at_depth, other.h_feature_id_at_depth, features_size * sizeof(int));
 	memcpy(h_nodes, other.h_nodes, (pow(2, max_depth + 1) - 1) * sizeof(node));
+
 }
 
 __global__ void make_last_layer_gpu(node* nodes, int depth, int layer_size)
