@@ -23,6 +23,7 @@ struct node
 struct node_ptr
 {
 	node_ptr();
+	node_ptr(const node_ptr& other);
 	node_ptr* left;
 	node_ptr* right;
 	int depth;
@@ -60,8 +61,10 @@ public:
 	float calculate_answer(test& _test);
 	float calculate_error(data_set& test_set);
 	void print();
+	
 private:
 	void make_layer(int depth);
+	node_ptr* root;
 	void make_tree_ptr();
 	void fill_node_ptr(node_ptr* n, int node_id);
 	//void prune(int node_id);
@@ -75,7 +78,6 @@ private:
 	int* h_feature_id_at_depth;
 	node* nodes; 
 	node* h_nodes;
-	node_ptr* root;
 	bool* used_features;
 	int leafs;
 	int depth;

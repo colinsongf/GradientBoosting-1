@@ -9,13 +9,13 @@ gradient_boosting::gradient_boosting(data_set& train_set, int iterations, int ma
 	coefficients.push_back(1.0);
 	for (int i = 0; i < iterations; i++)
 	{
-		printf("iter #%d\n", i);
+		//printf("iter #%d\n", i);
 		data_set pseudo_residuals = get_pseudo_residuals_set();
 		trees.push_back(tree(pseudo_residuals, max_leafs, max_depth));
-		clock_t time = clock();
+		//clock_t time = clock();
 		coefficients.push_back(calculate_coefficient());
-		time = clock() - time;
-		printf("time: %f\n\n", (float)time / CLOCKS_PER_SEC);
+		//time = clock() - time;
+		//printf("time: %f\n\n", (float)time / CLOCKS_PER_SEC);
 	}
 }
 

@@ -12,6 +12,7 @@ int main()
 	int tests_size = 1500;
 	data_set train_set("Prototask.train", features_size, tests_size, false);
 	data_set test_set("Prototask.test", features_size, tests_size, false);
+	freopen("out.txt", "w", stdout);
 	/*
 	clock_t time = clock();
 	gradient_boosting grad_boost(train_set, 100, 1000000, 4);
@@ -24,7 +25,7 @@ int main()
 	for (int i = -1; i < 1; i++)
 	{
 		clock_t time = clock();
-		gradient_boosting grad_boost(train_set, 200, 1000000, 4);
+		gradient_boosting grad_boost(train_set, 100, 1000000, 4);
 		time = clock() - time;
 		if (i >= 0)
 		{
@@ -34,7 +35,7 @@ int main()
 	}
 	sum /= 1.0;
 	printf("avg boost time: %f\n\n", (float)sum / CLOCKS_PER_SEC);
-	
+	fclose(stdout);
 
 
 	//double error = grad_boost.calculate_error(test_set);
