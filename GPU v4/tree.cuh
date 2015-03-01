@@ -13,6 +13,7 @@ struct node
 	float split_value;
 	float output_value;
 	float sum;
+	float sum_of_squares;
 	float size;
 	float node_mse;
 	float subtree_mse;
