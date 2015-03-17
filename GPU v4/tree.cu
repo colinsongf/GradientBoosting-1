@@ -90,19 +90,6 @@ __global__ void make_last_layer_gpu(node* nodes, int depth, int layer_size)
 	}
 }
 
-__global__ void make_root_gpu(node* nodes, float root_sum, float root_size, float root_sum_of_squares)
-{
-	float output_value = root_sum / root_size;
-	nodes[0].depth = 0;
-	nodes[0].is_leaf = false;
-	nodes[0].is_exists = true;
-	nodes[0].output_value = output_value;
-	nodes[0].node_mse = root_sum_of_squares / root_size - (output_value * output_value);
-	nodes[0].size = root_size;
-	nodes[0].sum = root_sum;
-	nodes[0].sum_of_squares = root_sum_of_squares;
-}
-
 tree::tree(data_set& train_set, int max_leafs, int max_depth) : max_depth(max_depth)
 {
 	features_size = train_set.features_size;
@@ -135,33 +122,17 @@ tree::tree(data_set& train_set, int max_leafs, int max_depth) : max_depth(max_de
 	//auto start = std::chrono::high_resolution_clock::now();
 	leafs = 1;
 	depth = 0;
-	/*node root;
+	node root;
 	for (int i = 0; i < tests_size; i++)
 	{
 		root.size++;
 		root.sum += train_set.answers[i];
 		root.sum_of_squares += pow(train_set.answers[i], 2);
 	}
-	printf("sum %f\n", root.sum);
 	root.output_value = root.sum / root.size;
 	root.node_mse = root.sum_of_squares / root.size - pow(root.output_value, 2);
 	cudaMemcpyAsync(nodes, &root, sizeof(node), cudaMemcpyHostToDevice);
-	*/
-	float root_sum = 0;
-	float root_size = 0;
-	float root_sum_of_squares = 0;
-	for (int i = 0; i < tests_size; i++)
-	{
-		root_size++;
-		root_sum += train_set.answers[i];
-		root_sum_of_squares += pow(train_set.answers[i], 2);
-	}
-	dim3 block(1, 1);
-	dim3 grid(1, 1);
-	make_root_gpu<<<grid, block>>>(nodes, root_sum, root_size, root_sum_of_squares);
-	cudaDeviceSynchronize();
-	float root_output_value = root_sum / root_size;
-	//float new_error = root_sum_of_squares / root_size - pow(root_output_value, 2);
+	float new_error = root.node_mse;
 	//float old_error = new_error + EPS;
 	while (/*new_error < old_error &&*/ leafs < max_leafs && depth < max_depth && !features_set.empty())
 	{
@@ -171,11 +142,11 @@ tree::tree(data_set& train_set, int max_leafs, int max_depth) : max_depth(max_de
 		features_set.erase(feature_and_error.first);
 		depth++;
 		//old_error = new_error;
-		//new_error = feature_and_error.second;
+		new_error = feature_and_error.second;
 		//std::cout << "level " << depth << " created. training error: " << new_error << " best_feat: " << feature_and_error.first << std::endl;
 	}
-	block.x = BLOCK_SIZE;
-	grid.x = 2 + pow(2, depth) / (1 + BLOCK_SIZE);
+	dim3 block(BLOCK_SIZE, 1);
+	dim3 grid(2 + pow(2, depth) / (1 + BLOCK_SIZE), 1);
 	make_last_layer_gpu<<<grid, block>>>(nodes, depth, pow(2, depth));
 	cudaDeviceSynchronize();
 	//auto end = std::chrono::high_resolution_clock::now();
