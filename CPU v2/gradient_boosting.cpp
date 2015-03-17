@@ -1,6 +1,7 @@
 #include <cmath>
 #include <cstdio>
 #include <ctime>
+#include <cstdlib>
 #include "gradient_boosting.h"
 
 gradient_boosting::gradient_boosting(data_set& train_set, int iterations, int max_leafs, int max_depth) : train_set(train_set)

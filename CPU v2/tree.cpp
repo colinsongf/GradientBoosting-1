@@ -4,6 +4,7 @@
 #include <iostream>
 #include <string>
 #include <cmath>
+#include <cstdio>
 #include <string.h>
 #include "tree.h"
 
@@ -31,7 +32,7 @@ node_ptr::node_ptr(const node_ptr& other) : depth(other.depth), is_leaf(other.is
 
 node::node(const node& other) : depth(other.depth), is_leaf(other.is_leaf), is_exists(other.is_exists),
 	node_mse(other.node_mse), output_value(other.output_value), size(other.size), split_value(other.split_value),
-	subtree_mse(other.subtree_mse), sum(other.sum) {}
+	subtree_mse(other.subtree_mse), sum(other.sum), sum_of_squares(other.sum_of_squares) {}
 
 node::node()
 {
@@ -41,6 +42,7 @@ node::node()
 	node_mse = 0;
 	size = 0;
 	sum = 0;
+	sum_of_squares = 0;
 }
 
 my_tuple::my_tuple(int test_id, int split_id, float feature, float answer) : test_id(test_id), split_id(split_id),
@@ -117,7 +119,7 @@ tree::tree(data_set& train_set, int max_leafs, int max_depth) : max_depth(max_de
 	root.output_value = root.sum / root.size;
 	root.node_mse = root.sum_of_squares / root.size - pow(root.output_value, 2);
 	memcpy(nodes, &root, sizeof(node));
-	//float new_error = root.node_mse;
+	float new_error = root.node_mse;
 	//float old_error = new_error + EPS;
 	while (/*new_error < old_error &&*/ leafs < max_leafs && depth < max_depth && !features_set.empty())
 	{
@@ -126,7 +128,7 @@ tree::tree(data_set& train_set, int max_leafs, int max_depth) : max_depth(max_de
 		features_set.erase(feature_and_error.first);
 		depth++;
 		//old_error = new_error;
-		//new_error = feature_and_error.second;
+		new_error = feature_and_error.second;
 		//std::cout << "level " << depth << " created. training error: " << new_error << " best_feat: " << feature_and_error.first << std::endl;
 	}
 	int layer_size = pow(2, depth);
@@ -264,6 +266,10 @@ void calc_split_gpu2(node* nodes, my_pair* errors, int tests_size, /*bool* used_
 	for (int i = 0; i < tests_size; i++)
 	{
 		cur_my_tuple = sorted_tests[y * tests_size + i];
+		/*if (y == 0)
+		{
+			printf("dd %f\n", cur_my_tuple.answer);
+		}*/
 		int exists = (cur_my_tuple.split_id >> x) & 1;
 		ans_pow = pow(cur_my_tuple.answer, 2);
 		l_sum += exists * cur_my_tuple.answer;

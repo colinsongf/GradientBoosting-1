@@ -14,7 +14,7 @@ int main()
 	data_set test_set("Prototask.test", features_size, 1193, false);
 	//data_set train_set("proto.small", features_size, tests_size, false);
 	freopen("out.txt", "w", stdout);
-	for (int i = -1; i < 10; i++)
+	for (int i = -1; i < 1; i++)
 	{
 		clock_t time = clock();
 		tree t(train_set, 1000000, 4);
