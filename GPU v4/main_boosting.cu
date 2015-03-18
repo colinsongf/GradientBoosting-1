@@ -8,9 +8,9 @@
 
 int main()
 {
-	int features_size = 21;
-	int tests_size = 1500;
-	data_set train_set("Prototask.train", features_size, tests_size, false);
+	int features_size = 100;
+	int tests_size = 165249;
+	data_set train_set("data2.txt", features_size, tests_size, true);
 	data_set test_set("Prototask.test", features_size, tests_size, false);
 	freopen("out.txt", "w", stdout);
 	/*
@@ -25,7 +25,7 @@ int main()
 	for (int i = -1; i < 1; i++)
 	{
 		clock_t time = clock();
-		gradient_boosting grad_boost(train_set, 100, 1000000, 4);
+		gradient_boosting grad_boost(train_set, 2, 1000000, 4);
 		time = clock() - time;
 		if (i >= 0)
 		{
