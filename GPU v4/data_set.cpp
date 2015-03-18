@@ -43,3 +43,6 @@ data_set::data_set(std::string file_name, int features_size, int tests_size, boo
 		}
 	}
 }
+
+data_set::data_set(const data_set& other) : features(other.features), answers(other.answers), tests(other.tests),
+	features_size(other.features_size), tests_size(other.tests_size) {} 

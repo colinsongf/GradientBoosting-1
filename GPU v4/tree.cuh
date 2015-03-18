@@ -12,8 +12,8 @@ struct node
 	int depth;
 	float split_value;
 	float output_value;
-	float sum;
-	float sum_of_squares;
+	double sum;
+	double sum_of_squares;
 	float size;
 	float node_mse;
 	float subtree_mse;
@@ -64,6 +64,7 @@ public:
 	void print();
 	
 private:
+	void delete_node(node_ptr* n);
 	void make_layer(int depth);
 	node_ptr* root;
 	void make_tree_ptr();

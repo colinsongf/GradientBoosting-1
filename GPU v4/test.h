@@ -6,6 +6,7 @@
 struct test
 {
 	test(std::vector<float> const& features, float answer = 0.0);
+	test(const test& other);
 	std::vector<float> features;
 	float answer;
 };
