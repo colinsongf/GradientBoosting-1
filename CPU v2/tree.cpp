@@ -14,7 +14,10 @@
 #define BLOCK_SIZE 32
 #define MAX_TESTS 1500
 
-node_ptr::node_ptr() {}
+node_ptr::node_ptr()
+{
+	left = right = NULL;
+}
 
 node_ptr::node_ptr(const node_ptr& other) : depth(other.depth), is_leaf(other.is_leaf),
 	output_value(other.output_value), split_value(other.split_value)
@@ -109,17 +112,17 @@ tree::tree(data_set& train_set, int max_leafs, int max_depth) : max_depth(max_de
 	//auto start = std::chrono::high_resolution_clock::now();
 	leafs = 1;
 	depth = 0;
-	node root;
+	node root_t;
 	for (int i = 0; i < tests_size; i++)
 	{
-		root.size++;
-		root.sum += train_set.answers[i];
-		root.sum_of_squares += pow(train_set.answers[i], 2);
+		root_t.size++;
+		root_t.sum += train_set.answers[i];
+		root_t.sum_of_squares += pow(train_set.answers[i], 2);
 	}
-	root.output_value = root.sum / root.size;
-	root.node_mse = root.sum_of_squares / root.size - pow(root.output_value, 2);
-	memcpy(nodes, &root, sizeof(node));
-	float new_error = root.node_mse;
+	root_t.output_value = root_t.sum / (double)root_t.size;
+	root_t.node_mse = root_t.sum_of_squares / (double)root_t.size - pow((double)root_t.output_value, 2);
+	memcpy(nodes, &root_t, sizeof(node));
+	float new_error = root_t.node_mse;
 	//float old_error = new_error + EPS;
 	while (/*new_error < old_error &&*/ leafs < max_leafs && depth < max_depth && !features_set.empty())
 	{
@@ -129,7 +132,7 @@ tree::tree(data_set& train_set, int max_leafs, int max_depth) : max_depth(max_de
 		depth++;
 		//old_error = new_error;
 		new_error = feature_and_error.second;
-		//std::cout << "level " << depth << " created. training error: " << new_error << " best_feat: " << feature_and_error.first << std::endl;
+		std::cout << "level " << depth << " created. training error: " << new_error << " best_feat: " << feature_and_error.first << std::endl;
 	}
 	int layer_size = pow(2, depth);
 	for (int i = 0; i < layer_size; i++)
@@ -159,7 +162,18 @@ tree::~tree()
 {
 	free(h_feature_id_at_depth);
 	free(h_nodes);
-	//delete_node(root);
+	delete_node(root);
+}
+
+void tree::delete_node(node_ptr* n)
+{
+	if (n == NULL)
+	{
+		return;
+	}
+	delete_node(n->left);
+	delete_node(n->right);
+	delete n;
 }
 
 float tree::calculate_answer(test& _test)
@@ -170,6 +184,25 @@ float tree::calculate_answer(test& _test)
 		cur = _test.features[h_feature_id_at_depth[cur->depth]] < cur->split_value ? cur->left : cur->right;
 	}
 	return cur->output_value;
+	
+	/*
+	int cur_id = 0;
+	node cur = h_nodes[cur_id];
+	while (!cur.is_leaf)
+	{
+		if (_test.features[h_feature_id_at_depth[cur.depth]] < cur.split_value)
+		{
+			cur = h_nodes[cur_id * 2 + 1];
+			cur_id = cur_id * 2 + 1;
+		}
+		else
+		{
+			cur = h_nodes[cur_id * 2 + 2];
+			cur_id = cur_id * 2 + 2;
+		}
+	}
+	return cur.output_value;
+	*/
 }
 
 float tree::calculate_error(data_set& test_set)
@@ -252,12 +285,12 @@ void calc_split_gpu2(node* nodes, my_pair* errors, int tests_size, /*bool* used_
 		return;
 	}*/
 	my_tuple cur_my_tuple;
-	float l_sum = 0;
-	float r_sum = cur_node.sum;
-	float l_sum_pow = 0;
-	float r_sum_pow = cur_node.sum_of_squares;
-	int l_size = 0;
-	int r_size = cur_node.size;
+	double l_sum = 0;
+	double r_sum = cur_node.sum;
+	double l_sum_pow = 0;
+	double r_sum_pow = cur_node.sum_of_squares;
+	double l_size = 0;
+	double r_size = cur_node.size;
 	//float l_avg = 0;
 	//float r_avg = 0;
 	float l_err = 0;
@@ -266,10 +299,6 @@ void calc_split_gpu2(node* nodes, my_pair* errors, int tests_size, /*bool* used_
 	for (int i = 0; i < tests_size; i++)
 	{
 		cur_my_tuple = sorted_tests[y * tests_size + i];
-		/*if (y == 0)
-		{
-			printf("dd %f\n", cur_my_tuple.answer);
-		}*/
 		int exists = (cur_my_tuple.split_id >> x) & 1;
 		ans_pow = pow(cur_my_tuple.answer, 2);
 		l_sum += exists * cur_my_tuple.answer;
@@ -369,12 +398,12 @@ void make_split_gpu(node* nodes, float* split_values,
 	nodes[node_id].split_value = split_value;
 	//printf("split_val: %f\n", split_value);
 	node cur_node = nodes[node_id];
-	float l_sum = 0;
-	float r_sum = cur_node.sum;
-	float l_sum_pow = 0;
-	float r_sum_pow = cur_node.sum_of_squares;
-	int l_size = 0;
-	int r_size = cur_node.size;
+	double l_sum = 0;
+	double r_sum = cur_node.sum;
+	double l_sum_pow = 0;
+	double r_sum_pow = cur_node.sum_of_squares;
+	double l_size = 0;
+	double r_size = cur_node.size;
 	float l_avg = 0;
 	float r_avg = 0;
 	float l_err = 0;
@@ -475,7 +504,6 @@ std::pair<int, float> tree::fill_layer()
 		std::sort(pre_errors.begin() + i * tests_size, pre_errors.begin() + (i + 1) * tests_size);
 	}
 	
-	//if (y < features_size && x < layer_size && !used_features[y])
 	for (int x = 0; x < layer_size; x++)
 	{
 		for (int y = 0; y < features_size; y++)
@@ -487,7 +515,6 @@ std::pair<int, float> tree::fill_layer()
 			}
 		}
 	}
-
 
 	std::replace(errors.begin(), errors.end(), INF_INT, 0);
 	for (int i = 0; i < features_size; i++)
