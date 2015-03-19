@@ -3,6 +3,7 @@
 #include <cstdlib>
 #include <ctime>
 #include <cstdio>
+#include <iostream>
 
 #define BLOCK_SIZE 32
 
@@ -52,11 +53,14 @@ double calcSumCpu(double* a, int s)
 	{
 		ans += a[i];
 	}
+	return ans;
 }
 
 int main()
 {
-	int iterations = 1;
+	freopen("out.txt", "w", stdout);
+	printf("dd");
+	int iterations = 10;
 	int size = 100;
 	srand(time(NULL));
 	double* a = (double*)malloc(size * size * sizeof(double));
@@ -91,6 +95,7 @@ int main()
 		printf("host: %f device: %f\n", sum_h, sum_d);
 	}
 
+	fclose(stdout);
 	free(a);
 	free(b);
 	free(c);
