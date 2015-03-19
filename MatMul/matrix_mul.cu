@@ -58,7 +58,7 @@ double calcSumCpu(double* a, int s)
 
 int main()
 {
-	freopen("out.txt", "w", stdout);
+	//freopen("out.txt", "w", stdout);
 	printf("dd");
 	int iterations = 10;
 	int size = 100;
@@ -84,8 +84,8 @@ int main()
 	{
 		fillMat(a, size * size);
 		fillMat(b, size * size);
-		cudaMemcpy(a_device, &a, size * size * sizeof(double), cudaMemcpyHostToDevice);
-		cudaMemcpy(b_device, &b, size * size * sizeof(double), cudaMemcpyHostToDevice);
+		cudaMemcpy(a_device, a, size * size * sizeof(double), cudaMemcpyHostToDevice);
+		cudaMemcpy(b_device, b, size * size * sizeof(double), cudaMemcpyHostToDevice);
 		matMulCpu(a, b, c, size, size, size);
 		matMulGpu<<<grid, block>>>(a_device, b_device, c_device, size, size, size);
 		cudaDeviceSynchronize();
@@ -95,7 +95,7 @@ int main()
 		printf("host: %f device: %f\n", sum_h, sum_d);
 	}
 
-	fclose(stdout);
+	//fclose(stdout);
 	free(a);
 	free(b);
 	free(c);
