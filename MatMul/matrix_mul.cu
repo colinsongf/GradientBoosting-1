@@ -7,13 +7,13 @@
 
 #define BLOCK_SIZE 32
 
-void matMulCpu(double* a, double* b, double* c, int s1, int s2, int s3)
+void matMulCpu(float* a, float* b, float* c, int s1, int s2, int s3)
 {
 	for (int i = 0; i < s1; i++)
 	{
 		for (int j = 0; j < s3; j++)
 		{
-			double ans = 0;
+			float ans = 0;
 			for (int k = 0; k < s2; k++)
 			{
 				ans += a[i * s2 + k] * b[k * s3 + j];
@@ -23,13 +23,13 @@ void matMulCpu(double* a, double* b, double* c, int s1, int s2, int s3)
 	}
 }
 
-__global__ void matMulGpu(double* a, double* b, double* c, int s1, int s2, int s3)
+__global__ void matMulGpu(float* a, float* b, float* c, int s1, int s2, int s3)
 {
 	int i = blockIdx.y * blockDim.y + threadIdx.y;
 	int j = blockIdx.x * blockDim.x + threadIdx.x;
 	if (i < s1 && j < s3)
 	{
-		double ans = 0;
+		float ans = 0;
 		for (int k = 0; k < s2; k++)
 		{
 			ans += a[i * s2 + k] * b[k * s3 + j];
@@ -38,7 +38,7 @@ __global__ void matMulGpu(double* a, double* b, double* c, int s1, int s2, int s
 	}
 }
 
-void fillMat(double* a, int s)
+void fillMat(float* a, int s)
 {
 	for (int i = 0; i < s; i++)
 	{
@@ -46,9 +46,9 @@ void fillMat(double* a, int s)
 	}
 }
 
-double calcSumCpu(double* a, int s)
+float calcSumCpu(float* a, int s)
 {
-	double ans = 0;
+	float ans = 0;
 	for (int i = 0; i < s; i++)
 	{
 		ans += a[i];
@@ -59,41 +59,59 @@ double calcSumCpu(double* a, int s)
 int main()
 {
 	//freopen("out.txt", "w", stdout);
-	printf("dd");
-	int iterations = 10;
-	int size = 100;
+	int iterations = 2;
+	int size = 1000;
 	srand(time(NULL));
-	double* a = (double*)malloc(size * size * sizeof(double));
-	double* b = (double*)malloc(size * size * sizeof(double));
-	double* c = (double*)malloc(size * size * sizeof(double));
+	float* a = (float*)malloc(size * size * sizeof(float));
+	float* b = (float*)malloc(size * size * sizeof(float));
+	float* c = (float*)malloc(size * size * sizeof(float));
 
-	double* a_device;
-	double* b_device;
-	double* c_device;
-	cudaMalloc(&a_device, size * size * sizeof(double));
-	cudaMalloc(&b_device, size * size * sizeof(double));
-	cudaMalloc(&c_device, size * size * sizeof(double));
+	float* a_device;
+	float* b_device;
+	float* c_device;
+	cudaMalloc(&a_device, size * size * sizeof(float));
+	cudaMalloc(&b_device, size * size * sizeof(float));
+	cudaMalloc(&c_device, size * size * sizeof(float));
 
 	dim3 block(BLOCK_SIZE, BLOCK_SIZE);
 	dim3 grid(2 + size * size / (1 + BLOCK_SIZE), 2 + size * size / (1 + BLOCK_SIZE));
 
-	double sum_h;
-	double sum_d;
+	float sum_h;
+	float sum_d;
+
+	clock_t time_h = 0;
+	clock_t time_d = 0;
+
 
 	for (int i = 0; i < iterations; i++)
 	{
 		fillMat(a, size * size);
 		fillMat(b, size * size);
-		cudaMemcpy(a_device, a, size * size * sizeof(double), cudaMemcpyHostToDevice);
-		cudaMemcpy(b_device, b, size * size * sizeof(double), cudaMemcpyHostToDevice);
+		cudaMemcpy(a_device, a, size * size * sizeof(float), cudaMemcpyHostToDevice);
+		cudaMemcpy(b_device, b, size * size * sizeof(float), cudaMemcpyHostToDevice);
+
+		clock_t t1 = clock();
 		matMulCpu(a, b, c, size, size, size);
+		t1 = clock() - t1;
+		time_h += t1;
+
+		t1 = clock();
 		matMulGpu<<<grid, block>>>(a_device, b_device, c_device, size, size, size);
 		cudaDeviceSynchronize();
+		t1 = clock() - t1;
+		time_d += t1;
+
 		sum_h = calcSumCpu(c, size * size);
-		cudaMemcpy(c, c_device, size * size * sizeof(double), cudaMemcpyDeviceToHost);
+		cudaMemcpy(c, c_device, size * size * sizeof(float), cudaMemcpyDeviceToHost);
 		sum_d = calcSumCpu(c, size * size);
-		printf("host: %f device: %f\n", sum_h, sum_d);
+		printf("host: %f device: %f ", sum_h, sum_d);
+		if (sum_h == sum_d)
+		{
+			printf("OK\n");
+		}
 	}
+
+	printf("time_h: %f time_d: %f\n\n", (float)time_h / CLOCKS_PER_SEC, (float)time_d / CLOCKS_PER_SEC);
 
 	//fclose(stdout);
 	free(a);
