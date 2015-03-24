@@ -43,7 +43,8 @@ void fillMat(float* a, int s)
 {
 	for (int i = 0; i < s; i++)
 	{
-		a[i] = rand() % 100;
+		//a[i] = rand() % 100;
+		a[i] = (0.8 * ((float)rand() / (float)RAND_MAX) + 0.1);
 	}
 }
 
@@ -60,8 +61,8 @@ float calcSumCpu(float* a, int s)
 int main()
 {
 	//freopen("out.txt", "w", stdout);
-	int iterations = 2;
-	int size = 1000;
+	int iterations = 1;
+	int size = 5000;
 	srand(time(NULL));
 	float* a = (float*)malloc(size * size * sizeof(float));
 	float* b = (float*)malloc(size * size * sizeof(float));
@@ -76,14 +77,16 @@ int main()
 	cudaMalloc(&c_device, size * size * sizeof(float));
 	cudaMalloc(&c_device_cublas, size * size * sizeof(float));
 
-	dim3 block(BLOCK_SIZE, BLOCK_SIZE);
-	dim3 grid(1 + size / (1 + BLOCK_SIZE), 1 + size / (1 + BLOCK_SIZE));
+	int grid_size = 1 + size / BLOCK_SIZE;
+
+	dim3 block(BLOCK_SIZE, BLOCK_SIZE, 1);
+//	dim3 grid(2 + size / (1 + BLOCK_SIZE), 2 + size / (1 + BLOCK_SIZE), 1);
+	dim3 grid(grid_size, grid_size, 1);
 
 	float sum_h;
 	float sum_d;
 
 	clock_t time_h = 0;
-	clock_t time_d = 0;
 	float time_d_event = 0;
 	float time_d_cublas = 0;
 
@@ -99,7 +102,8 @@ int main()
 	cudaMemcpy(b_device, b, size * size * sizeof(float), cudaMemcpyHostToDevice);
 	matMulGpu<<<grid, block>>>(a_device, b_device, c_device, size, size, size);
 	cudaDeviceSynchronize();
-	status = cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, size, size, size, &alpha, b, size, a, size,
+	 cudaError_t error = cudaGetLastError();
+	status = cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, size, size, size, &alpha, b_device, size, a_device, size,
 			&beta, c_device_cublas, size);
 	cudaDeviceSynchronize();
 	// done
@@ -121,20 +125,16 @@ int main()
 		t1 = clock() - t1;
 		time_h += t1;
 
-		t1 = clock();
 		cudaEventRecord(start, 0);
 		matMulGpu<<<grid, block>>>(a_device, b_device, c_device, size, size, size);
 		cudaEventRecord(stop, 0);
 		cudaEventSynchronize(stop);
-		cudaDeviceSynchronize();
-		t1 = clock() - t1;
-		time_d += t1;
-
+		
 		cudaEventElapsedTime(&time, start, stop);
 		time_d_event += (time / 1000.0);
 
 		cudaEventRecord(start, 0);
-		status = cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, size, size, size, &alpha, b, size, a, size,
+		status = cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, size, size, size, &alpha, b_device, size, a_device, size,
 			&beta, c_device_cublas, size);
 		cudaEventRecord(stop, 0);
 		cudaEventSynchronize(stop);
@@ -159,12 +159,10 @@ int main()
 	}
 
 	float time_h_secs = (float)time_h / CLOCKS_PER_SEC;
-	float time_d_secs = (float)time_d / CLOCKS_PER_SEC;
-	float profit = time_h_secs / time_d_secs;
 	float profit_event = time_h_secs / time_d_event;
 	float profit_cublas = time_h_secs / time_d_cublas;
-	printf("profit: %f profit event: %f profit cublas %f time_h: %f time_d: %f\n\n", profit,
-		profit_event, profit_cublas, time_h_secs, time_d_secs);
+	printf("profit event: %f profit cublas %f time_h: %f time_d_event: %f time_d_cublas: %f\n\n", 
+		profit_event, profit_cublas, time_h_secs, time_d_event, time_d_cublas);
 
 	//fclose(stdout);
 	status = cublasDestroy(handle);
