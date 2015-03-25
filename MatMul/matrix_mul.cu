@@ -51,7 +51,7 @@ __global__ void matMulGpuShared(float* a, float* b, float* c, int s1, int s2, in
 
 	for (int id = 0; id < parts; id++)
 	{
-		if (i < s1 && id * BLOCK_SIZE + threadIdx.x < s2) 
+		if (i < s1 && id * BLOCK_SIZE + threadIdx.x < s2)
 		{
 			a_shared[threadIdx.y][threadIdx.x] = a[i * s2 + id * BLOCK_SIZE + threadIdx.x];
 		}
@@ -60,7 +60,7 @@ __global__ void matMulGpuShared(float* a, float* b, float* c, int s1, int s2, in
 			a_shared[threadIdx.y][threadIdx.x] = 0;
 		}
 
-		if (j < s3 && id * BLOCK_SIZE + threadIdx.y < s2) 
+		if (j < s3 && id * BLOCK_SIZE + threadIdx.y < s2)
 		{
 			b_shared[threadIdx.y][threadIdx.x] = b[j + s3 * (id * BLOCK_SIZE + threadIdx.y)];
 		}
@@ -136,7 +136,7 @@ int main()
 	float time_d_shared = 0;
 
 	cublasHandle_t handle;
-	cublasStatus_t status = cublasCreate(&handle); 
+	cublasStatus_t status = cublasCreate(&handle);
 	float alpha = 1.0f;
 	float beta = 0.0f;
 
@@ -157,6 +157,8 @@ int main()
 	cudaEventCreate(&start);
 	cudaEventCreate(&stop);
 
+	printf("matrix size: %d iterations: %d\n", size, iterations);
+
 	for (int i = 0; i < iterations; i++)
 	{
 		fillMat(a, size * size);
@@ -174,7 +176,7 @@ int main()
 		matMulGpu<<<grid, block>>>(a_device, b_device, c_device, size, size, size);
 		cudaEventRecord(stop, 0);
 		cudaEventSynchronize(stop);
-		
+
 		cudaEventElapsedTime(&time, start, stop);
 		time_d_event += (time / 1000.0);
 
@@ -182,10 +184,10 @@ int main()
 		matMulGpuShared<<<grid, block>>>(a_device, b_device, c_device_shared, size, size, size);
 		cudaEventRecord(stop, 0);
 		cudaEventSynchronize(stop);
-		
+
 		cudaEventElapsedTime(&time, start, stop);
 		time_d_shared += (time / 1000.0);
-		
+
 		cudaEventRecord(start, 0);
 		status = cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, size, size, size, &alpha, b_device, size, a_device, size,
 			&beta, c_device_cublas, size);
@@ -223,7 +225,7 @@ int main()
 	float profit_event = time_h_secs / time_d_event;
 	float profit_shared = time_h_secs / time_d_shared;
 	float profit_cublas = time_h_secs / time_d_cublas;
-	printf("profit event: %f\nprofit shared: %f\nprofit cublas %f\ntime_h: %f\ntime_d_event: %f\ntime_d_shared: %f\ntime_d_cublas: %f\n\n", 
+	printf("profit event: %f\nprofit shared: %f\nprofit cublas %f\ntime_h: %f\ntime_d_event: %f\ntime_d_shared: %f\ntime_d_cublas: %f\n\n",
 		profit_event, profit_shared, profit_cublas, time_h_secs, time_d_event, time_d_shared, time_d_cublas);
 
 	//fclose(stdout);
@@ -239,3 +241,4 @@ int main()
 
     return 0;
 }
+
