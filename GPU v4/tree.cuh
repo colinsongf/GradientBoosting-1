@@ -73,7 +73,7 @@ private:
 	//void print(node* n);
 	//void fill_layers(node* n);
 	std::pair<int, float> fill_layer();
-	thrust::device_vector<my_tuple> sorted_tests;
+	//thrust::device_vector<my_tuple> sorted_tests;
 	float* features;
 	//float* answers;
 	int* feature_id_at_depth;
@@ -86,5 +86,10 @@ private:
 	int tests_size;
 	int features_size;
 	int max_depth;
+
+	thrust::device_vector<int> tuple_test_id;
+	thrust::device_vector<int> tuple_split_id;
+	thrust::device_vector<float> tuple_feature;
+	thrust::device_vector<float> tuple_answer;
 };
 #endif // TREE_H
