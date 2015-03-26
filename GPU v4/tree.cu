@@ -149,7 +149,8 @@ tree::tree(data_set& train_set, int max_leafs, int max_depth) : max_depth(max_de
 		std::cout << "level " << depth << " created. training error: " << new_error << " best_feat: " << feature_and_error.first << std::endl;
 	}
 	dim3 block(BLOCK_SIZE, 1);
-	dim3 grid(2 + pow(2, depth) / (1 + BLOCK_SIZE), 1);
+	//dim3 grid(2 + pow(2, depth) / (1 + BLOCK_SIZE), 1);
+	dim3 grid(1 + pow(2, depth) / BLOCK_SIZE, 1);
 	make_last_layer_gpu<<<grid, block>>>(nodes, depth, pow(2, depth));
 	cudaDeviceSynchronize();
 	//auto end = std::chrono::high_resolution_clock::now();
@@ -263,7 +264,7 @@ void tree::make_layer(int depth)
 	int begin_id = pow(2, depth) - 1;
 	int end_id = begin_id + pow(2, depth);
 	dim3 block(BLOCK_SIZE, 1);
-	dim3 grid(2 + pow(2, depth) / (1 + BLOCK_SIZE), 1);
+	dim3 grid(1 + pow(2, depth) / BLOCK_SIZE, 1);
 	make_layer_gpu<<<grid, block>>>(nodes, begin_id, end_id, thrust::raw_pointer_cast(&new_leafs[0]));
 	cudaDeviceSynchronize();
 	leafs += thrust::reduce(new_leafs.begin(), new_leafs.end());
@@ -578,14 +579,14 @@ std::pair<int, float> tree::fill_layer()
 {
 	int layer_size = pow(2, depth);
 	dim3 block(BLOCK_SIZE, 1);
-	dim3 grid(2 + tests_size / (1 + BLOCK_SIZE), 1);
+	dim3 grid(1 + tests_size / BLOCK_SIZE, 1);
 	thrust::device_vector<int> node_id_of_test(tests_size);
 	fill_node_id_of_test<<<grid, block>>>(nodes, thrust::raw_pointer_cast(&node_id_of_test[0]),
 		feature_id_at_depth,
 		features, tests_size, depth);
 	cudaDeviceSynchronize();
 	block.y = BLOCK_SIZE;
-	grid.y = 2 + features_size / (1 + BLOCK_SIZE);
+	grid.y = 1 + features_size / BLOCK_SIZE;
 
 	fill_split_ids<<<grid, block>>>(thrust::raw_pointer_cast(&node_id_of_test[0]), thrust::raw_pointer_cast(&sorted_tests[0]),
 		tests_size, features_size, layer_size);
@@ -594,7 +595,7 @@ std::pair<int, float> tree::fill_layer()
 	
 
 	block.x = BLOCK_SIZE;
-	grid.x = 2 + layer_size / (1 + BLOCK_SIZE);
+	grid.x = 1 + layer_size / BLOCK_SIZE;
 	calc_split_gpu2<<<grid, block>>>(nodes, thrust::raw_pointer_cast(&pre_errors[0]), tests_size, /*used_features,*/ features_size, layer_size,
 		thrust::raw_pointer_cast(&sorted_tests[0]));
 	/*calc_split_gpu<<<grid, block>>>(thrust::raw_pointer_cast(&node_id_of_test[0]),
@@ -614,7 +615,7 @@ std::pair<int, float> tree::fill_layer()
 		thrust::sort(pre_errors.begin() + i * tests_size, pre_errors.begin() + (i + 1) * tests_size);
 	}
 	block.x = BLOCK_SIZE;
-	grid.x = 2 + layer_size / (1 + BLOCK_SIZE);
+	grid.x = 1 + layer_size / BLOCK_SIZE;
 	calc_min_error<<<grid, block>>>(nodes, thrust::raw_pointer_cast(&pre_errors[0]),
 		thrust::raw_pointer_cast(&errors[0]),
 		thrust::raw_pointer_cast(&split_values[0]),	tests_size, features_size, layer_size, used_features, thrust::raw_pointer_cast(&sorted_tests[0]),
@@ -636,7 +637,7 @@ std::pair<int, float> tree::fill_layer()
 	calc_best_feature<<<grid, block>>>(thrust::raw_pointer_cast(&errors[0]), used_features,
 		thrust::raw_pointer_cast(&best_feature[0]), thrust::raw_pointer_cast(&best_error[0]), features_size, layer_size, feature_id_at_depth, depth);
 	block.x = BLOCK_SIZE;
-	grid.x = 2 + layer_size / (1 + BLOCK_SIZE);
+	grid.x = 1 + layer_size / BLOCK_SIZE;
 	cudaDeviceSynchronize();
 	make_split_gpu<<<grid, block>>>(nodes, thrust::raw_pointer_cast(&split_values[0]), thrust::raw_pointer_cast(&best_feature[0]),
 		tests_size, layer_size, thrust::raw_pointer_cast(&sorted_tests_ids[0]), thrust::raw_pointer_cast(&sorted_tests[0]));
