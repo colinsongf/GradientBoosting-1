@@ -15,6 +15,8 @@ public:
 	std::vector<test> tests;
 	int features_size;
 	int tests_size;
+	void make_train_test_csv(std::string file_name);
+	void make_my_data(std::string file_name);
 };
 
 #endif // DATA_SET_H
