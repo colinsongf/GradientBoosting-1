@@ -2,6 +2,7 @@
 #include <fstream>
 #include <iostream>
 #include <algorithm>
+#include <cmath>
 #include "data_set.h"
 
 data_set::data_set(std::string file_name, int features_size, int tests_size, bool is_class_first)
@@ -47,10 +48,10 @@ data_set::data_set(std::string file_name, int features_size, int tests_size, boo
 
 void data_set::make_train_test_csv(std::string file_name)
 {
-	std::ofstream train_features(file_name + "_train_features.csv");
-	std::ofstream test_features(file_name + "_test_features.csv");
-	std::ofstream train_targets(file_name + "_train_targets.csv");
-	std::ofstream test_targets(file_name + "_test_targets.csv");
+	std::ofstream train_features((file_name + "_train_features.csv").c_str());
+	std::ofstream test_features((file_name + "_test_features.csv").c_str());
+	std::ofstream train_targets((file_name + "_train_targets.csv").c_str());
+	std::ofstream test_targets((file_name + "_test_targets.csv").c_str());
 	int train_size = (int)floor(tests_size * 0.7);
 	std::random_shuffle(tests.begin(), tests.end());
 	train_features.precision(5);
@@ -88,8 +89,8 @@ void data_set::make_train_test_csv(std::string file_name)
 
 void data_set::make_my_data(std::string file_name)
 {
-	std::ofstream train_set(file_name + "_train_set.csv");
-	std::ofstream test_set(file_name + "_test_set.csv");
+	std::ofstream train_set((file_name + "_train_set.csv").c_str());
+	std::ofstream test_set((file_name + "_test_set.csv").c_str());
 	int train_size = (int)floor(tests_size * 0.7);
 	train_set.precision(5);
 	test_set.precision(5);
