@@ -13,7 +13,6 @@
 #define INF_INT 1000000
 #define EPS 1e-6
 #define BLOCK_SIZE 32
-#define MAX_TESTS 1500
 
 node_ptr::node_ptr() {}
 
@@ -257,10 +256,10 @@ void calc_split_gpu2(node* nodes, my_pair* errors, int tests_size, /*bool* used_
 		return;
 	}*/
 	my_tuple cur_my_tuple;
-	float l_sum = 0;
-	float r_sum = cur_node.sum;
-	float l_sum_pow = 0;
-	float r_sum_pow = cur_node.sum_of_squares;
+	double l_sum = 0;
+	double r_sum = cur_node.sum;
+	double l_sum_pow = 0;
+	double r_sum_pow = cur_node.sum_of_squares;
 	int l_size = 0;
 	int r_size = cur_node.size;
 	//float l_avg = 0;
@@ -374,10 +373,10 @@ void make_split_gpu(node* nodes, float* split_values,
 	nodes[node_id].split_value = split_value;
 	//printf("split_val: %f\n", split_value);
 	node cur_node = nodes[node_id];
-	float l_sum = 0;
-	float r_sum = cur_node.sum;
-	float l_sum_pow = 0;
-	float r_sum_pow = cur_node.sum_of_squares;
+	double l_sum = 0;
+	double r_sum = cur_node.sum;
+	double l_sum_pow = 0;
+	double r_sum_pow = cur_node.sum_of_squares;
 	int l_size = 0;
 	int r_size = cur_node.size;
 	float l_avg = 0;
@@ -447,6 +446,7 @@ std::pair<int, float> tree::fill_layer()
 {
 	int layer_size = pow(2, depth);
 	std::vector<int> node_id_of_test(tests_size);
+
 	for (int i = 0; i < tests_size; i++)
 	{
 		fill_node_id_of_test(nodes, &node_id_of_test[0], feature_id_at_depth, 
@@ -461,6 +461,7 @@ std::pair<int, float> tree::fill_layer()
 		}
 	}
 
+
 	std::vector<my_pair> pre_errors(tests_size * features_size);
 
 	time_t gg = clock();
@@ -473,8 +474,9 @@ std::pair<int, float> tree::fill_layer()
 		}
 	}
 	gg = clock() - gg;
-	printf("calc_sp_cpu: %f\n\n", (float)gg / CLOCKS_PER_SEC);
+	printf("calc_split_g: %f\n\n", (float)gg / CLOCKS_PER_SEC);
 
+	
 	
 	std::vector<float> errors(layer_size * features_size, INF_INT);
 	std::vector<float> split_values(layer_size * features_size, INF_INT);
@@ -483,8 +485,10 @@ std::pair<int, float> tree::fill_layer()
 	{
 		std::sort(pre_errors.begin() + i * tests_size, pre_errors.begin() + (i + 1) * tests_size);
 	}
+
 	
 	//if (y < features_size && x < layer_size && !used_features[y])
+	gg = clock();
 	for (int x = 0; x < layer_size; x++)
 	{
 		for (int y = 0; y < features_size; y++)
@@ -497,6 +501,10 @@ std::pair<int, float> tree::fill_layer()
 		}
 	}
 
+	gg = clock() - gg;
+	printf("calc_min_err: %f\n\n", (float)gg / CLOCKS_PER_SEC);
+
+
 
 	std::replace(errors.begin(), errors.end(), INF_INT, 0);
 	for (int i = 0; i < features_size; i++)
@@ -505,6 +513,7 @@ std::pair<int, float> tree::fill_layer()
 			errors.begin() + (i + 1) * layer_size, 0.0);
 		//std::cout << i << " # " << errors[i * layer_size] << std::endl;
 	}
+
 	std::vector<int> best_feature(1);
 	std::vector<float> best_error(1);
 	calc_best_feature(&errors[0], used_features, &best_feature[0], &best_error[0], features_size, layer_size, feature_id_at_depth, depth);
@@ -513,7 +522,7 @@ std::pair<int, float> tree::fill_layer()
 	{
 		make_split_gpu(nodes, &split_values[0], &best_feature[0], tests_size, layer_size, &sorted_tests_ids[0], &sorted_tests[0], x);
 	}
-	
+
 	return std::make_pair(best_feature[0], best_error[0]);
 }
 

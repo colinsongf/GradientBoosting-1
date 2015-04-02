@@ -18,8 +18,7 @@
 #define INF 1e6
 #define INF_INT 1000000
 #define EPS 1e-6
-#define BLOCK_SIZE 32
-#define MAX_TESTS 1500
+#define BLOCK_SIZE 8
 
 node_ptr::node_ptr() 
 {
@@ -393,50 +392,39 @@ __global__ void fill_split_ids(int* node_id_of_test, int* tuple_test_id, int* tu
 }    
 
 __global__ void calc_split_gpu2(node* nodes, my_pair* errors, int tests_size, /*bool* used_features,*/
-									 int features_size, int layer_size, int* tuple_split_id, float* tuple_answer, float* err)
+									 int features_size, int layer_size, int* tuple_split_id, float* tuple_answer)
 {
 	int x = blockIdx.x * blockDim.x + threadIdx.x;
 	int y = blockIdx.y * blockDim.y + threadIdx.y;
 	if (y < features_size && x < layer_size /*&& !used_features[y]*/)
 	{
-		int node_id = layer_size - 1 + x;
-		node cur_node = nodes[node_id];
-		if (!cur_node.is_exists || cur_node.is_leaf)
+		//int node_id = layer_size - 1 + x;
+		node cur_node = nodes[layer_size - 1 + x];
+		/*if (!cur_node.is_exists || cur_node.is_leaf)
 		{
 			return;
-		}
+		}*/
 		double l_sum = 0;
 		double r_sum = cur_node.sum;
 		double l_sum_pow = 0;
 		double r_sum_pow = cur_node.sum_of_squares;
-		double l_size = 0;
-		double r_size = cur_node.size;
-		float l_err = 0;
-		float r_err = 0;
-		float ans = 0;
-		float ans_pow = 0;
-
+		int l_size = 0;
+		int r_size = cur_node.size;
 		for (int i = 0; i < tests_size; i++)
 		{
-			ans = tuple_answer[y * tests_size + i];
+			float ans = tuple_answer[y * tests_size + i];
 			int exists = (tuple_split_id[y * tests_size + i] >> x) & 1;
-			/*curandState_t state;
-			curand_init(0, 0, 0, &state);
-			ans = curand(&state) % 10;
-			int exists = curand(&state) % 2;*/
-			ans_pow = pow(ans, 2);
+			float ans_pow = pow(ans, 2);
 			l_sum += exists * ans;
 			l_sum_pow += exists * ans_pow;
 			l_size += exists;
 			r_sum -= exists * ans;
 			r_sum_pow -= exists * ans_pow;
 			r_size -= exists;
-			l_err = (l_size > 0) ? (l_sum_pow / l_size - pow(l_sum / l_size, 2)) : 0;
-			r_err = (r_size > 0) ? (r_sum_pow / r_size - pow(r_sum / r_size, 2)) : 0;
+			float l_err = (l_size > 0) ? (l_sum_pow / l_size - pow(l_sum / l_size, 2)) : 0;
+			float r_err = (r_size > 0) ? (r_sum_pow / r_size - pow(r_sum / r_size, 2)) : 0;
 			if (exists)
 			{
-				//err[y * tests_size + i] = l_err + r_err;
-
 				errors[y * tests_size + i] = my_pair(i, l_err + r_err);
 			}
 		}
@@ -452,32 +440,24 @@ __global__ void calc_split_gpu3(node* nodes, my_pair* errors, int tests_size,
 	int y = blockIdx.y * blockDim.y + threadIdx.y;
 	
 	int parts = tests_size / BLOCK_SIZE + 1;
-	int node_id = layer_size - 1 + x;
 	node cur_node;
 	double l_sum;
 	double r_sum;
 	double l_sum_pow;
 	double r_sum_pow;
-	double l_size;
-	double r_size;
-	float l_err;
-	float r_err;
-	float ans;
-	float ans_pow;
+	int l_size;
+	int r_size;
 
 	if (y < features_size && x < layer_size)
 	{
-		cur_node = nodes[node_id];
+		cur_node = nodes[layer_size - 1 + x];
 		l_sum = 0;
 		r_sum = cur_node.sum;
 		l_sum_pow = 0;
 		r_sum_pow = cur_node.sum_of_squares;
 		l_size = 0;
 		r_size = cur_node.size;
-		l_err = 0;
-		r_err = 0;
 	}
-	
 
 	for (int id = 0; id < parts; id++)
 	{
@@ -492,16 +472,16 @@ __global__ void calc_split_gpu3(node* nodes, my_pair* errors, int tests_size,
 			for (int i = 0; i < BLOCK_SIZE && id * BLOCK_SIZE + i < tests_size; i++)
 			{
 				int exists = (tuple_split_id_shared[threadIdx.y][i] >> x) & 1;
-				ans = tuple_answer_shared[threadIdx.y][i];
-				ans_pow = pow(ans, 2);
+				float ans = tuple_answer_shared[threadIdx.y][i];
+				float ans_pow = pow(ans, 2);
 				l_sum += exists * ans;
 				l_sum_pow += exists * ans_pow;
 				l_size += exists;
 				r_sum -= exists * ans;
 				r_sum_pow -= exists * ans_pow;
 				r_size -= exists;
-				l_err = (l_size > 0) ? (l_sum_pow / l_size - pow(l_sum / l_size, 2)) : 0;
-				r_err = (r_size > 0) ? (r_sum_pow / r_size - pow(r_sum / r_size, 2)) : 0;
+				float l_err = (l_size > 0) ? (l_sum_pow / l_size - pow(l_sum / l_size, 2)) : 0;
+				float r_err = (r_size > 0) ? (r_sum_pow / r_size - pow(r_sum / r_size, 2)) : 0;
 				if (exists)
 				{
 				    errors[y * tests_size + id * BLOCK_SIZE + i] = my_pair(id * BLOCK_SIZE + i, l_err + r_err);
@@ -596,32 +576,26 @@ __global__ void make_split_gpu(node* nodes, float* split_values,
 	if (x < layer_size)
 	{
 		int node_id = layer_size - 1 + x;
-		if (!nodes[node_id].is_exists || nodes[node_id].is_leaf)
+		node cur_node = nodes[node_id];
+		if (!cur_node.is_exists || cur_node.is_leaf)
 		{
 			return;
 		}
 		int best_f = best_feature[0];
 		float split_value = split_values[best_f * layer_size + x];
 		nodes[node_id].split_value = split_value;
-		//printf("split_val: %f\n", split_value);
-		node cur_node = nodes[node_id];
 		double l_sum = 0;
 		double r_sum = cur_node.sum;
 		double l_sum_pow = 0;
 		double r_sum_pow = cur_node.sum_of_squares;
-		double l_size = 0;
-		double r_size = cur_node.size;
-		float l_avg = 0;
-		float r_avg = 0;
-		float l_err = 0;
-		float r_err = 0;
-		float ans = 0;
+		int l_size = 0;
+		int r_size = cur_node.size;
 		int id = sorted_tests_ids[best_f * layer_size + x];
 		//my_tuple cur_my_tuple;
 		for (int i = 0; i <= id; i++)
 		{
 			//cur_my_tuple = sorted_tests[best_f * tests_size + i];
-			ans = tuple_answer[best_f * tests_size + i];
+			float ans = tuple_answer[best_f * tests_size + i];
 			int exists = (tuple_split_id[best_f * tests_size + i] >> x) & 1;
 			l_sum += exists * ans;
 			l_sum_pow += exists * pow(ans, 2);
@@ -630,22 +604,6 @@ __global__ void make_split_gpu(node* nodes, float* split_values,
 		r_sum -= l_sum;
 		r_sum_pow -= l_sum_pow;
 		r_size -= l_size;
-		/*for (int i = 0; i <= id; i++)
-		{
-			cur_my_tuple = sorted_tests[best_f * tests_size + i];
-			int exists = (cur_my_tuple.split_id >> x) & 1;
-			l_sum += exists * cur_my_tuple.answer;
-			l_sum_pow += exists * pow(cur_my_tuple.answer, 2);
-			l_size += exists;
-		}
-		for (int i = id + 1; i < tests_size; i++)
-		{
-			cur_my_tuple = sorted_tests[best_f * tests_size + i];
-			int exists = (cur_my_tuple.split_id >> x) & 1;
-			r_sum += exists * cur_my_tuple.answer;
-			r_sum_pow += exists * pow(cur_my_tuple.answer, 2);
-			r_size += exists;
-		}*/
 		if (l_size == 0)
 		{
 			nodes[2 * node_id + 1].output_value = nodes[node_id].output_value;
@@ -674,28 +632,10 @@ __global__ void make_split_gpu(node* nodes, float* split_values,
 			nodes[2 * node_id + 1].is_leaf = (nodes[node_id].size <= 1) ? true : false;
 			return;
 		}
-		l_avg = l_sum / l_size; 
-		r_avg = r_sum / r_size; 
-		/*for (int i = 0; i <= id; i++)
-		{
-			cur_my_tuple = sorted_tests[best_f * tests_size + i];
-			int exists = (cur_my_tuple.split_id >> x) & 1;
-			float diff = cur_my_tuple.answer - l_avg;
-			l_err += exists * pow(diff, 2); 
-		}
-		for (int i = id + 1; i < tests_size; i++)
-		{
-			cur_my_tuple = sorted_tests[best_f * tests_size + i];
-			int exists = (cur_my_tuple.split_id >> x) & 1;
-			float diff = cur_my_tuple.answer - r_avg;
-			r_err += exists * pow(diff, 2);
-		}*/
-		//l_err = (l_sum_pow - 2 * l_avg * l_sum) / l_size + pow(l_avg, 2);
-		//r_err = (r_sum_pow - 2 * r_avg * r_sum) / r_size + pow(r_avg, 2);
-		l_err = l_sum_pow / l_size - pow(l_avg, 2);
-		r_err = r_sum_pow / r_size - pow(r_avg, 2);
-		//l_err = l_err / l_size;
-		//r_err = r_err / r_size;
+		float l_avg = l_sum / l_size; 
+		float r_avg = r_sum / r_size; 
+		float l_err = l_sum_pow / l_size - pow(l_avg, 2);
+		float r_err = r_sum_pow / r_size - pow(r_avg, 2);
 		nodes[2 * node_id + 1].output_value = l_avg;
 		nodes[2 * node_id + 1].size = l_size;
 		nodes[2 * node_id + 1].sum = l_sum;
@@ -733,15 +673,10 @@ std::pair<int, float> tree::fill_layer()
 	block.x = BLOCK_SIZE;
 	grid.x = 1 + layer_size / BLOCK_SIZE;
 
-	thrust::device_vector<float> afaf(tests_size * features_size);
-
 	cudaDeviceSynchronize();
 	time_t gg = clock();
-	calc_split_gpu2<<<grid, block>>>(nodes, thrust::raw_pointer_cast(&pre_errors[0]), tests_size, /*used_features,*/ features_size, layer_size,
-		thrust::raw_pointer_cast(&tuple_split_id[0]), thrust::raw_pointer_cast(&tuple_answer[0]), thrust::raw_pointer_cast(&afaf[0]));
-	/*calc_split_gpu<<<grid, block>>>(thrust::raw_pointer_cast(&node_id_of_test[0]),
-		thrust::raw_pointer_cast(&pre_errors[0]), tests_size, used_features, features_size, layer_size,
-		thrust::raw_pointer_cast(&sorted_tests[0]));*/
+	calc_split_gpu2<<<grid, block>>>(nodes, thrust::raw_pointer_cast(&pre_errors[0]), tests_size, features_size, layer_size,
+		thrust::raw_pointer_cast(&tuple_split_id[0]), thrust::raw_pointer_cast(&tuple_answer[0]));
 	cudaDeviceSynchronize();
 	gg = clock() - gg;
 	printf("calc_sp_gpu: %f\n\n", (float)gg / CLOCKS_PER_SEC);
@@ -749,21 +684,20 @@ std::pair<int, float> tree::fill_layer()
 	thrust::device_vector<float> errors(layer_size * features_size, INF_INT);
 	thrust::device_vector<float> split_values(layer_size * features_size, INF_INT);
 	thrust::device_vector<int> sorted_tests_ids(layer_size * features_size, 0);
-	/*block.x = 1;
-	grid.x = 1;
-	sort_helper<<<grid, block>>>(thrust::raw_pointer_cast(&pre_errors[0]), tests_size, features_size);
-	cudaDeviceSynchronize();*/
 	for (int i = 0; i < features_size; i++)
 	{
 		thrust::sort(pre_errors.begin() + i * tests_size, pre_errors.begin() + (i + 1) * tests_size);
 	}
+	
 	block.x = BLOCK_SIZE;
 	grid.x = 1 + layer_size / BLOCK_SIZE;
+	cudaDeviceSynchronize();
 	calc_min_error<<<grid, block>>>(nodes, thrust::raw_pointer_cast(&pre_errors[0]),
 		thrust::raw_pointer_cast(&errors[0]),
 		thrust::raw_pointer_cast(&split_values[0]),	tests_size, features_size, layer_size, used_features, thrust::raw_pointer_cast(&tuple_split_id[0]),
 		thrust::raw_pointer_cast(&tuple_feature[0]), thrust::raw_pointer_cast(&sorted_tests_ids[0]));
 	cudaDeviceSynchronize();
+
 	thrust::replace(errors.begin(), errors.end(), INF_INT, 0);
 	for (int i = 0; i < features_size; i++)
 	{
@@ -786,6 +720,7 @@ std::pair<int, float> tree::fill_layer()
 		tests_size, layer_size, thrust::raw_pointer_cast(&sorted_tests_ids[0]), thrust::raw_pointer_cast(&tuple_split_id[0]),
 		thrust::raw_pointer_cast(&tuple_answer[0]));
 	cudaDeviceSynchronize();
+	
 	return std::make_pair(best_feature[0], best_error[0]);
 }
 

@@ -29,7 +29,9 @@ int main()
 	clock_t sum = 0;
 	int features_size = 100;
 	int tests_size = 165249;
-	data_set train_set("data2.txt", features_size, tests_size, true);
+	//int tests_size = 100;
+	
+	data_set train_set("data2.txt", features_size, tests_size, true, 0);
 	//data_set test_set("Prototask.test", features_size, 1193, false);
 	//data_set train_set("proto.small", features_size, tests_size, false);
 	//freopen("out.txt", "w", stdout);
@@ -37,7 +39,7 @@ int main()
 
 	for (int i = -1; i < 0; i++)
 	{
-		//cudaDeviceSynchronize();
+		cudaDeviceSynchronize();
 		clock_t time = clock();
 		tree t(train_set, 1000000, 4);
 		//float err = t.calculate_answer(train_set.tests[0]);
@@ -61,6 +63,6 @@ int main()
 	std::cout << "test err: " << err << std::endl;
 	printf("time: %f\n\n", (float)time / CLOCKS_PER_SEC);
 	*/
-	//cudaDeviceReset();
+	cudaDeviceReset();
 	return 0;
 }
