@@ -546,6 +546,63 @@ __global__ void calc_min_error(node* nodes, my_pair* pre_errors,
 	}
 }
 
+__global__ void calc_min_error2(node* nodes, my_pair* pre_errors,
+							   float* errors, float* split_values, int tests_size, int features_size,
+							   int layer_size, bool* used_features, int* tuple_split_id, float* tuple_feature, int* sorted_tests_ids)
+{
+	int x = blockIdx.x * blockDim.x + threadIdx.x;
+	int y = blockIdx.y * blockDim.y + threadIdx.y;
+	if (y < features_size && x < layer_size && !used_features[y])
+	{
+		int node_id = layer_size - 1 + x;
+		node cur_node = nodes[node_id];
+		if (!cur_node.is_exists || cur_node.is_leaf)
+		{
+			return;
+		}
+		float best_error = INF_INT;
+		float best_split_val;
+		int best_id;
+		for (int i = 0; i < tests_size; i++)
+		{
+			my_pair p1 = pre_errors[y * tests_size + i];
+			int id = p1.sorted_tests_id;
+			float t1_f = tuple_feature[y * tests_size + id];
+			float t2_f;
+			if ((p1.error < best_error) && ((tuple_split_id[y * tests_size + id] >> x) & 1))
+			{
+				int j = id + 1;
+				while (j < tests_size)
+				{
+					t2_f = tuple_feature[y * tests_size + j];
+					if ((tuple_split_id[y * tests_size + j] >> x) & 1)
+					{
+						break;
+					}
+					j++;
+				}
+				if (j == tests_size)
+				{
+					best_error = p1.error;
+					best_split_val = t1_f + EPS;
+					best_id = id;
+					continue;
+				}
+				if (t1_f != t2_f)
+				{
+					best_error = p1.error;
+					best_split_val = (t1_f + t2_f) / 2.0;
+					best_id = id;
+				}
+			}
+		}
+		errors[y * layer_size + x] = best_error;
+		split_values[y * layer_size + x] = best_split_val;
+		sorted_tests_ids[y * layer_size + x] = best_id;
+	}
+}
+
+
 __global__ void calc_best_feature(float* errors, bool* used_features, int* best_features, float* best_errors,
 									 int features_size, int layer_size, int* feature_id_at_depth, int depth)
 {
@@ -679,25 +736,29 @@ std::pair<int, float> tree::fill_layer()
 		thrust::raw_pointer_cast(&tuple_split_id[0]), thrust::raw_pointer_cast(&tuple_answer[0]));
 	cudaDeviceSynchronize();
 	gg = clock() - gg;
-	printf("calc_sp_gpu: %f\n\n", (float)gg / CLOCKS_PER_SEC);
+	printf("calc_sp_gpu: %f\n", (float)gg / CLOCKS_PER_SEC);
 
 	thrust::device_vector<float> errors(layer_size * features_size, INF_INT);
 	thrust::device_vector<float> split_values(layer_size * features_size, INF_INT);
 	thrust::device_vector<int> sorted_tests_ids(layer_size * features_size, 0);
-	for (int i = 0; i < features_size; i++)
+	/*for (int i = 0; i < features_size; i++)
 	{
 		thrust::sort(pre_errors.begin() + i * tests_size, pre_errors.begin() + (i + 1) * tests_size);
-	}
+	}*/
 	
 	block.x = BLOCK_SIZE;
 	grid.x = 1 + layer_size / BLOCK_SIZE;
 	cudaDeviceSynchronize();
-	calc_min_error<<<grid, block>>>(nodes, thrust::raw_pointer_cast(&pre_errors[0]),
+	gg = clock();
+	calc_min_error2<<<grid, block>>>(nodes, thrust::raw_pointer_cast(&pre_errors[0]),
 		thrust::raw_pointer_cast(&errors[0]),
 		thrust::raw_pointer_cast(&split_values[0]),	tests_size, features_size, layer_size, used_features, thrust::raw_pointer_cast(&tuple_split_id[0]),
 		thrust::raw_pointer_cast(&tuple_feature[0]), thrust::raw_pointer_cast(&sorted_tests_ids[0]));
 	cudaDeviceSynchronize();
+	gg = clock() - gg;
+	printf("calc_min_err: %f\n", (float)gg / CLOCKS_PER_SEC);
 
+	
 	thrust::replace(errors.begin(), errors.end(), INF_INT, 0);
 	for (int i = 0; i < features_size; i++)
 	{

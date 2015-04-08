@@ -337,6 +337,57 @@ void calc_min_error(node* nodes, my_pair* pre_errors,
 	}
 }
 
+void calc_min_error2(node* nodes, my_pair* pre_errors,
+							   float* errors, float* split_values, int tests_size, int features_size,
+							   int layer_size, bool* used_features, my_tuple* sorted_tests, int* sorted_tests_ids, int x, int y)
+{
+	int node_id = layer_size - 1 + x;
+	node cur_node = nodes[node_id];
+	if (!cur_node.is_exists || cur_node.is_leaf)
+	{
+		return;
+	}
+	float best_error = INF_INT;
+	float best_split_val;
+	int best_id;
+	for (int i = 0; i < tests_size; i++)
+	{
+		my_pair p1 = pre_errors[y * tests_size + i];
+		int id = p1.sorted_tests_id;
+		my_tuple t1 = sorted_tests[y * tests_size + id];
+		my_tuple t2;
+		if ((p1.error < best_error) && ((t1.split_id >> x) & 1))
+		{
+			int j = id + 1;
+			while (j < tests_size)
+			{
+				t2 = sorted_tests[y * tests_size + j];
+				if ((t2.split_id >> x) & 1)
+				{
+					break;
+				}
+				j++;
+			}
+			if (j == tests_size)
+			{
+				best_error = p1.error;
+				best_split_val = t1.feature + EPS;
+				best_id = id;
+				continue;
+			}
+			if (t1.feature != t2.feature)
+			{
+				best_error = p1.error;
+				best_split_val = (t1.feature + t2.feature) / 2.0;
+				best_id = id;
+			}
+		}
+	}
+	errors[y * layer_size + x] = best_error;
+	split_values[y * layer_size + x] = best_split_val;
+	sorted_tests_ids[y * layer_size + x] = best_id;
+}
+
 void calc_best_feature(float* errors, bool* used_features, int* best_features, float* best_errors,
 									 int features_size, int layer_size, int* feature_id_at_depth, int depth)
 {
@@ -474,17 +525,17 @@ std::pair<int, float> tree::fill_layer()
 		}
 	}
 	gg = clock() - gg;
-	printf("calc_split_g: %f\n\n", (float)gg / CLOCKS_PER_SEC);
+	printf("calc_split_c: %f\n", (float)gg / CLOCKS_PER_SEC);
 
 	
 	
 	std::vector<float> errors(layer_size * features_size, INF_INT);
 	std::vector<float> split_values(layer_size * features_size, INF_INT);
 	std::vector<int> sorted_tests_ids(layer_size * features_size, 0);
-	for (int i = 0; i < features_size; i++)
+	/*for (int i = 0; i < features_size; i++)
 	{
 		std::sort(pre_errors.begin() + i * tests_size, pre_errors.begin() + (i + 1) * tests_size);
-	}
+	}*/
 
 	
 	//if (y < features_size && x < layer_size && !used_features[y])
@@ -495,14 +546,14 @@ std::pair<int, float> tree::fill_layer()
 		{
 			if (!used_features[y])
 			{
-				calc_min_error(nodes, &pre_errors[0], &errors[0], &split_values[0],	tests_size, features_size, layer_size,
+				calc_min_error2(nodes, &pre_errors[0], &errors[0], &split_values[0],	tests_size, features_size, layer_size,
 					used_features, &sorted_tests[0], &sorted_tests_ids[0], x, y);
 			}
 		}
 	}
 
 	gg = clock() - gg;
-	printf("calc_min_err: %f\n\n", (float)gg / CLOCKS_PER_SEC);
+	printf("calc_min_err: %f\n", (float)gg / CLOCKS_PER_SEC);
 
 
 
