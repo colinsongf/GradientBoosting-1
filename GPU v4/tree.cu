@@ -602,6 +602,20 @@ __global__ void calc_min_error2(node* nodes, my_pair* pre_errors,
 	}
 }
 
+__global__ void my_reduce(float* errors, int features_size, int layer_size)
+{
+	int y = blockIdx.y * blockDim.y + threadIdx.y;
+	if (y < features_size)
+	{
+		float ans = 0;
+		for (int i = 0; i < layer_size; i++)
+		{
+			ans += errors[y * layer_size + i];
+		}
+		errors[y * layer_size] = ans;
+	}
+}
+
 
 __global__ void calc_best_feature(float* errors, bool* used_features, int* best_features, float* best_errors,
 									 int features_size, int layer_size, int* feature_id_at_depth, int depth)
@@ -741,11 +755,17 @@ std::pair<int, float> tree::fill_layer()
 	thrust::device_vector<float> errors(layer_size * features_size, INF_INT);
 	thrust::device_vector<float> split_values(layer_size * features_size, INF_INT);
 	thrust::device_vector<int> sorted_tests_ids(layer_size * features_size, 0);
-	/*for (int i = 0; i < features_size; i++)
+	cudaDeviceSynchronize();
+	/*gg = clock();
+	for (int i = 0; i < features_size; i++)
 	{
 		thrust::sort(pre_errors.begin() + i * tests_size, pre_errors.begin() + (i + 1) * tests_size);
-	}*/
-	
+	}
+	cudaDeviceSynchronize();
+	gg = clock() - gg;
+	printf("sort: %f\n", (float)gg / CLOCKS_PER_SEC);
+	*/
+
 	block.x = BLOCK_SIZE;
 	grid.x = 1 + layer_size / BLOCK_SIZE;
 	cudaDeviceSynchronize();
@@ -758,19 +778,28 @@ std::pair<int, float> tree::fill_layer()
 	gg = clock() - gg;
 	printf("calc_min_err: %f\n", (float)gg / CLOCKS_PER_SEC);
 
-	
+	gg = clock();
 	thrust::replace(errors.begin(), errors.end(), INF_INT, 0);
-	for (int i = 0; i < features_size; i++)
+	/*for (int i = 0; i < features_size; i++)
 	{
 		errors[i * layer_size] = thrust::reduce(errors.begin() + i * layer_size,
 			errors.begin() + (i + 1) * layer_size, 0.0, thrust::plus<float>());
 		//std::cout << i << " # " << errors[i * layer_size] << std::endl;
-	}
+	}*/
+	block.x = 1;
+	grid.x = 1;
+	
+	my_reduce<<<grid, block>>>(thrust::raw_pointer_cast(&errors[0]), features_size, layer_size);
+	
+	
+	cudaDeviceSynchronize();
+	gg = clock() - gg;
+	printf("thrust rep: %f\n", (float)gg / CLOCKS_PER_SEC);
+
+
 	thrust::device_vector<int> best_feature(1);
 	thrust::device_vector<float> best_error(1);
-	block.x = 1;
 	block.y = 1;
-	grid.x = 1;
 	grid.y = 1;
 	calc_best_feature<<<grid, block>>>(thrust::raw_pointer_cast(&errors[0]), used_features,
 		thrust::raw_pointer_cast(&best_feature[0]), thrust::raw_pointer_cast(&best_error[0]), features_size, layer_size, feature_id_at_depth, depth);

@@ -388,6 +388,16 @@ void calc_min_error2(node* nodes, my_pair* pre_errors,
 	sorted_tests_ids[y * layer_size + x] = best_id;
 }
 
+void my_reduce(float* errors, int layer_size, int y)
+{
+	float ans = 0;
+	for (int i = 0; i < layer_size; i++)
+	{
+		ans += errors[y * layer_size + i];
+	}
+	errors[y * layer_size] = ans;
+}
+
 void calc_best_feature(float* errors, bool* used_features, int* best_features, float* best_errors,
 									 int features_size, int layer_size, int* feature_id_at_depth, int depth)
 {
@@ -532,10 +542,15 @@ std::pair<int, float> tree::fill_layer()
 	std::vector<float> errors(layer_size * features_size, INF_INT);
 	std::vector<float> split_values(layer_size * features_size, INF_INT);
 	std::vector<int> sorted_tests_ids(layer_size * features_size, 0);
-	/*for (int i = 0; i < features_size; i++)
+	/*gg = clock();
+	for (int i = 0; i < features_size; i++)
 	{
 		std::sort(pre_errors.begin() + i * tests_size, pre_errors.begin() + (i + 1) * tests_size);
-	}*/
+	}
+
+	gg = clock() - gg;
+	printf("sort: %f\n", (float)gg / CLOCKS_PER_SEC);
+	*/
 
 	
 	//if (y < features_size && x < layer_size && !used_features[y])
@@ -555,15 +570,16 @@ std::pair<int, float> tree::fill_layer()
 	gg = clock() - gg;
 	printf("calc_min_err: %f\n", (float)gg / CLOCKS_PER_SEC);
 
-
-
+	gg = clock();
 	std::replace(errors.begin(), errors.end(), INF_INT, 0);
 	for (int i = 0; i < features_size; i++)
 	{
-		errors[i * layer_size] = std::accumulate(errors.begin() + i * layer_size,
-			errors.begin() + (i + 1) * layer_size, 0.0);
+		//errors[i * layer_size] = std::accumulate(errors.begin() + i * layer_size,	errors.begin() + (i + 1) * layer_size, 0.0);
+		my_reduce(&errors[0], layer_size, i);	
 		//std::cout << i << " # " << errors[i * layer_size] << std::endl;
 	}
+	gg = clock() - gg;
+	printf("reduce: %f\n", (float)gg / CLOCKS_PER_SEC);
 
 	std::vector<int> best_feature(1);
 	std::vector<float> best_error(1);
