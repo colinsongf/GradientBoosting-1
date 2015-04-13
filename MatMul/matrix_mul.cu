@@ -1,151 +1,121 @@
-#include "cuda_runtime.h"
-#include "device_launch_parameters.h"
+#include <fstream>
+#include <sstream>
 #include <cstdlib>
-#include <ctime>
-#include <cstdio>
-#include <iostream>
+#include <vector>
+#include <limits>
+#include <thrust/device_vector.h>
+#include <thrust/sort.h>
 #include <cublas_v2.h>
+#include "matrix_mul.cuh"
 
-void matrix_mul_cpu(float* a, float* b, float* c, int a_height, int a_width, int b_width) // a * b = c; 
+matrix_mul::matrix_mul(std::string a_file_name, std::string b_file_name, int a_size,
+		int b_size, int features_size)
+		: a_file_name(a_file_name),
+		  b_file_name(b_file_name),
+		  a_size(a_size),
+		  b_size(b_size),
+		  features_size(features_size) {}
+
+struct comparator
 {
-	for (int i = 0; i < a_height; i++)
-	{
-		for (int j = 0; j < b_width; j++)
-		{
-			float ans = 0;
-			for (int k = 0; k < a_width; k++)
-			{
-				ans += a[i * a_width + k] * b[k * b_width + j];
-			}
-			c[i * b_width + j] = ans;
-		}
-	}
-}
-
-
-void fill_matrix(float* a, int size)
-{
-	for (int i = 0; i < size; i++)
-	{
-		a[i] = rand() % 100;
-	}
-}
-
-void print_matrix(float* a, int height, int width)
-{
-	for (int i = 0; i < height; i++)
-	{
-		for (int j = 0; j < width; j++)
-		{
-			printf("%f ", a[i * width + j]);
-		}
-		printf("\n");
-	}
-	printf("\n");
-}
-
-float calculate_sum_cpu(float* a, int size)
-{
-	float ans = 0;
-	for (int i = 0; i < size; i++)
-	{
-		ans += a[i];
-	}
-	return ans;
-}
-
-int main()
-{
-	//freopen("out.txt", "w", stdout);
-	int iterations = 1;
-	//int size = 1000;
-	int a_height = 500;
-	int a_width = 700;
-	int b_height = 700;
-	int b_width = 800;
-	srand(time(NULL));
-	float* a = (float*)malloc(a_height * a_width * sizeof(float));
-	float* b = (float*)malloc(b_height * b_width * sizeof(float));
-	float* c = (float*)malloc(a_height * b_width * sizeof(float));
-
-	float* a_device;
-	float* b_device;
 	float* c_device;
-	cudaMalloc(&a_device, a_height * a_width * sizeof(float));
-	cudaMalloc(&b_device, b_height * b_width * sizeof(float));
-	cudaMalloc(&c_device, a_height * b_width * sizeof(float));
-	
-	float sum_h;
-	float sum_d;
+	int i;
+	int b_size;
+	__host__ __device__ comparator(float* c_device, int& i, int& b_size) : c_device(c_device), i(i), b_size(b_size) {}
+    bool __host__ __device__ operator()(const int& id1, const int& id2) const
+    {
+    	return c_device[i * b_size + id1] > c_device[i * b_size + id2];
+    }
+};
 
-	clock_t time_h = 0;
-	float time_d = 0;
-	
+void matrix_mul::calculate(std::string output_file_name, int n, int block_size)
+{
+	std::ifstream a_stream(a_file_name.c_str());
+	std::ifstream b_stream(b_file_name.c_str());
+	std::ofstream output_stream(output_file_name.c_str());
+	std::vector<int> b_ids;
+	std::vector<float> b(b_size * features_size);
+	char const tab_delim = '\t';
+	std::string line;
+	thrust::device_vector<int> b_ids_device;
+	for (int i = 0; i < b_size; i++) //read "b" matrix
+	{
+		getline(b_stream, line);
+		std::istringstream line_stream(line);
+		std::string value;
+		getline(line_stream, value, tab_delim);
+		b_ids.push_back(atoi(value.c_str()));
+		for (int j = 0; j < features_size; j++)
+		{
+			getline(line_stream, value, tab_delim);
+			b[j * b_size + i] = atof(value.c_str());
+		}
+		b_ids_device.push_back(i);
+	}
+	thrust::device_vector<float> b_device(b);
+
 	cublasHandle_t handle;
 	cublasStatus_t status = cublasCreate(&handle);
 	float alpha = 1.0f;
 	float beta = 0.0f;
 
-	// warmup
-	fill_matrix(a, a_height * a_width);
-	fill_matrix(b, b_height * b_width);
-	cudaMemcpy(a_device, a, a_height * a_width * sizeof(float), cudaMemcpyHostToDevice);
-	cudaMemcpy(b_device, b, b_height * b_width * sizeof(float), cudaMemcpyHostToDevice);
-		status = cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, b_width, a_height, a_width, &alpha, b_device, b_width, a_device,
-			a_width, &beta, c_device, b_width);
-	cudaDeviceSynchronize();
-	// done
+	int parts = a_size / block_size + 1;
 
-	cudaEvent_t start, stop;
-	cudaEventCreate(&start);
-	cudaEventCreate(&stop);
-
-	for (int i = 0; i < iterations; i++)
+	for (int id = 0; id < parts; id++) //read "a" matrix by parts
 	{
-		fill_matrix(a, a_height * a_width);
-		fill_matrix(b, b_height * b_width);
-		cudaMemcpy(a_device, a, b_height * b_width * sizeof(float), cudaMemcpyHostToDevice);
-		cudaMemcpy(b_device, b, b_height * b_width * sizeof(float), cudaMemcpyHostToDevice);
-
-		clock_t t1 = clock();
-		float time;
-		matrix_mul_cpu(a, b, c, a_height, a_width, b_width);
-		t1 = clock() - t1;
-		time_h += t1;
-
-		cudaEventRecord(start, 0);
-		status = cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, b_width, a_height, a_width, &alpha, b_device, b_width, a_device,
-			a_width, &beta, c_device, b_width);
-		cudaEventRecord(stop, 0);
-		cudaEventSynchronize(stop);
-		cudaEventElapsedTime(&time, start, stop);
-		time_d += (time / 1000.0);
-
-		sum_h = calculate_sum_cpu(c, a_height * b_width);
-		print_matrix(c, a_height, b_width);
-		cudaMemcpy(c, c_device, a_height * b_width * sizeof(float), cudaMemcpyDeviceToHost);
-		sum_d = calculate_sum_cpu(c, a_height * b_width);
-		print_matrix(c, a_height, b_width);
-		if (sum_h == sum_d)
+		printf("Part %d of %d\n", id, parts);
+		int a_actual_size = (id == parts - 1) ? (a_size % block_size) : block_size;
+		std::vector<int> a_ids;
+		std::vector<float> a(a_actual_size * features_size);
+		for (int i = 0; (i < block_size) && (id * block_size + i < a_size); i++)
 		{
-			printf("OK! ");
+			getline(a_stream, line);
+			std::istringstream line_stream(line);
+			std::string value;
+			getline(line_stream, value, tab_delim);
+			a_ids.push_back(atoi(value.c_str()));
+			for (int j = 0; j < features_size; j++)
+			{
+				getline(line_stream, value, tab_delim);
+				a[i * features_size + j] = (float)atof(value.c_str());
+			}
 		}
-		printf("cpu sum: %f; cublas sum: %f\n", sum_d);
+		thrust::device_vector<float> a_device(a);
+		thrust::device_vector<float> c_device(a_actual_size * b_size);
+
+		// matrix multiplication
+		status = cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, b_size, a_actual_size, features_size, &alpha,
+				thrust::raw_pointer_cast(&b_device[0]), b_size, thrust::raw_pointer_cast(&a_device[0]),
+				features_size, &beta, thrust::raw_pointer_cast(&c_device[0]), b_size);
+
+		//print_c_matrix(thrust::raw_pointer_cast(&c_device[0]), a_actual_size);
+
+		for (int i = 0; i < a_actual_size; i++) //select "n" best ids
+		{
+			thrust::sort(b_ids_device.begin(), b_ids_device.end(), comparator(thrust::raw_pointer_cast(&c_device[0]), i, b_size));
+			thrust::host_vector<int> sorted_ids(b_ids_device);
+			output_stream << a_ids[i];
+			for (int j = 0; j < n; j++)
+			{
+				output_stream << '\t' << b_ids[sorted_ids[j]];
+			}
+			output_stream << std::endl;
+		}
 	}
-
-	float time_h_secs = (float)time_h / CLOCKS_PER_SEC;
-	float profit = time_h_secs / time_d;
-	printf("profit: %f\n", profit);
-
-	//fclose(stdout);
 	status = cublasDestroy(handle);
-	free(a);
-	free(b);
-	free(c);
-	cudaFree(a_device);
-	cudaFree(b_device);
-	cudaFree(c_device);
-
-    return 0;
 }
 
+void matrix_mul::print_c_matrix(float* c_device, int a_actual_size)
+{
+	float* c = (float*)malloc(a_actual_size * b_size * sizeof(float));
+	cudaMemcpy(c, c_device, a_actual_size * b_size * sizeof(float), cudaMemcpyDeviceToHost);
+	for (int i = 0; i < a_actual_size; i++)
+	{
+		for (int j = 0; j < b_size; j++)
+		{
+			printf("%f ", c[i * b_size + j]);
+		}
+		printf("\n");
+	}
+	free(c);
+}
