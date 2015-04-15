@@ -54,28 +54,6 @@ __host__ __device__ node::node()
 	sum_of_squares = 0;
 }
 
-__host__ __device__ my_tuple::my_tuple(int test_id, int split_id, float feature, float answer) : test_id(test_id), split_id(split_id),
-	feature(feature), answer(answer) {}
-
-bool __host__ __device__ operator<(const my_tuple& lhs, const my_tuple& rhs)
-{
-	return lhs.feature < rhs.feature;
-}
-
-__host__ __device__ my_pair::my_pair(int sorted_tests_id, float error) : sorted_tests_id(sorted_tests_id), error(error) {}
-
-__host__ __device__ my_pair::my_pair()
-{
-	sorted_tests_id = -1;
-	error = INF_INT;
-}
-
-bool __host__ __device__ operator<(const my_pair& lhs, const my_pair& rhs)
-{
-	return lhs.error < rhs.error;
-}
-	
-
 tree::tree(const tree& other) : features_size(other.features_size), max_depth(other.max_depth)
 {
 	root = new node_ptr(*other.root);
@@ -133,6 +111,7 @@ struct answer_comp
 
 tree::tree(data_set& train_set, int max_leafs, int max_depth) : max_depth(max_depth)
 {
+	//copy dataset to device
 	features_size = train_set.features_size;
 	tests_size = train_set.tests_size;
 	cudaMalloc(&nodes, (pow(2, max_depth + 1) - 1) * sizeof(node));
@@ -140,7 +119,6 @@ tree::tree(data_set& train_set, int max_leafs, int max_depth) : max_depth(max_de
 	cudaMalloc(&used_features, features_size * sizeof(bool));
 	cudaMalloc(&features, features_size * tests_size * sizeof(float));
 	
-	//cudaMalloc(&answers, tests_size * sizeof(float));
 	cudaMemsetAsync(used_features, false, features_size * sizeof(bool));
 	std::set<int> features_set;
 	for (size_t i = 0; i < train_set.features_size; i++)
@@ -148,14 +126,11 @@ tree::tree(data_set& train_set, int max_leafs, int max_depth) : max_depth(max_de
 		features_set.insert(i);
 	}
 	cudaMemcpyAsync(features, &train_set.features[0], sizeof(float) * tests_size * features_size, cudaMemcpyHostToDevice);
-	//cudaMemcpyAsync(answers, &train_set.answers[0], sizeof(float) * tests_size, cudaMemcpyHostToDevice);
 	
 	std::vector<int> h_tuple_test_id(tests_size * features_size);
 	std::vector<float> h_tuple_feature(tests_size * features_size);
 	std::vector<float> h_tuple_answer(tests_size * features_size);
-	
 
-	//std::vector<my_tuple> sorted(tests_size * features_size);
 	for (int i = 0; i < features_size; i++)
 	{
 		for (int j = 0; j < tests_size; j++)
@@ -163,46 +138,30 @@ tree::tree(data_set& train_set, int max_leafs, int max_depth) : max_depth(max_de
 			h_tuple_test_id[i * tests_size + j] = j;
 			h_tuple_feature[i * tests_size + j] = train_set.features[i * tests_size + j];
 			h_tuple_answer[i * tests_size + j] = train_set.answers[j];
-	
-			/*sorted[i * tests_size + j].test_id = j;
-			sorted[i * tests_size + j].feature = train_set.features[i * tests_size + j];
-			sorted[i * tests_size + j].answer = train_set.answers[j];
-			*/
 		}
-		//std::sort(sorted.begin() + i * tests_size, sorted.begin() + (i + 1) * tests_size);
 		std::sort(h_tuple_test_id.begin() + i * tests_size, h_tuple_test_id.begin() + (i + 1) * tests_size, feature_comp(&h_tuple_feature[0], i, tests_size));
-		//std::sort(h_tuple_test_id.begin() + i * tests_size, h_tuple_test_id.begin() + (i + 1) * tests_size,
-			//[&](int id1, int id2){return h_tuple_feature[i * tests_size + id1] < h_tuple_feature[i * tests_size + id2];});
 	}
 
 	std::vector<float> h2_tuple_feature(tests_size * features_size);
 	std::vector<float> h2_tuple_answer(tests_size * features_size);
-
 	
 	for (int i = 0; i < features_size; i++)
 	{
-		/*std::transform(h_tuple_test_id.begin() + i * tests_size, h_tuple_test_id.begin() + (i + 1) * tests_size,
-			h2_tuple_feature.begin() + i * tests_size,
-			[&](int id){ return h_tuple_feature[i * tests_size + id]; });
-		std::transform(h_tuple_test_id.begin() + i * tests_size, h_tuple_test_id.begin() + (i + 1) * tests_size,
-			h2_tuple_answer.begin() + i * tests_size,
-			[&](int id){ return h_tuple_answer[i * tests_size + id]; });*/
 		std::transform(h_tuple_test_id.begin() + i * tests_size, h_tuple_test_id.begin() + (i + 1) * tests_size,
 			h2_tuple_feature.begin() + i * tests_size, feature_comp2(&h_tuple_feature[0], i, tests_size));
 		std::transform(h_tuple_test_id.begin() + i * tests_size, h_tuple_test_id.begin() + (i + 1) * tests_size,
 			h2_tuple_answer.begin() + i * tests_size, answer_comp(&h_tuple_answer[0], i, tests_size));
 	}
 
-	//sorted_tests = thrust::device_vector<my_tuple> (sorted);
 	tuple_test_id = thrust::device_vector<int> (h_tuple_test_id);
 	tuple_feature = thrust::device_vector<float> (h2_tuple_feature);
 	tuple_answer = thrust::device_vector<float> (h2_tuple_answer);
 	tuple_split_id.resize(tests_size * features_size);
-	//auto start = std::chrono::high_resolution_clock::now();
 	leafs = 1;
 	depth = 0;
 	cudaDeviceSynchronize();
 	clock_t time = clock();
+	// make tree
 	node root_t;
 	for (int i = 0; i < tests_size; i++)
 	{
@@ -227,14 +186,11 @@ tree::tree(data_set& train_set, int max_leafs, int max_depth) : max_depth(max_de
 		std::cout << "level " << depth << " created. training error: " << new_error << " best_feat: " << feature_and_error.first << std::endl;
 	}
 	dim3 block(BLOCK_SIZE, 1);
-	//dim3 grid(2 + pow(2, depth) / (1 + BLOCK_SIZE), 1);
 	dim3 grid(1 + pow(2, depth) / BLOCK_SIZE, 1);
 	make_last_layer_gpu<<<grid, block>>>(nodes, depth, pow(2, depth));
 	cudaDeviceSynchronize();
 	time = clock() - time;
 	printf("calc time: %f\n\n", (float)time / CLOCKS_PER_SEC);
-	//auto end = std::chrono::high_resolution_clock::now();
-	//auto elapsed = end - start;
 	//std::cout << "leafs before pruning: " << leafs << std::endl;
 	//std::cout << "new tree! calculating time in ms: " << std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count() << std::endl;
 	
@@ -391,7 +347,7 @@ __global__ void fill_split_ids(int* node_id_of_test, int* tuple_test_id, int* tu
 	}
 }    
 
-__global__ void calc_split_gpu2(node* nodes, my_pair* errors, int tests_size, /*bool* used_features,*/
+__global__ void calc_split_gpu2(node* nodes, float* errors, int tests_size, /*bool* used_features,*/
 									 int features_size, int layer_size, int* tuple_split_id, float* tuple_answer)
 {
 	int x = blockIdx.x * blockDim.x + threadIdx.x;
@@ -425,13 +381,13 @@ __global__ void calc_split_gpu2(node* nodes, my_pair* errors, int tests_size, /*
 			float r_err = (r_size > 0) ? (r_sum_pow / r_size - pow(r_sum / r_size, 2)) : 0;
 			if (exists)
 			{
-				errors[y * tests_size + i] = my_pair(i, l_err + r_err);
+				errors[y * tests_size + i] = l_err + r_err;
 			}
 		}
 	}
 }
 
-__global__ void calc_split_gpu3(node* nodes, my_pair* errors, int tests_size,
+__global__ void calc_split_gpu3(node* nodes, float* errors, int tests_size,
 									 int features_size, int layer_size, int* tuple_split_id, float* tuple_answer)
 {
 	__shared__ int tuple_split_id_shared[BLOCK_SIZE][BLOCK_SIZE];
@@ -484,7 +440,7 @@ __global__ void calc_split_gpu3(node* nodes, my_pair* errors, int tests_size,
 				float r_err = (r_size > 0) ? (r_sum_pow / r_size - pow(r_sum / r_size, 2)) : 0;
 				if (exists)
 				{
-				    errors[y * tests_size + id * BLOCK_SIZE + i] = my_pair(id * BLOCK_SIZE + i, l_err + r_err);
+				    errors[y * tests_size + id * BLOCK_SIZE + i] = l_err + r_err;
 				}
 			}
 		__syncthreads();
@@ -492,61 +448,7 @@ __global__ void calc_split_gpu3(node* nodes, my_pair* errors, int tests_size,
 	}
 }
 
-__global__ void calc_min_error(node* nodes, my_pair* pre_errors,
-							   float* errors, float* split_values, int tests_size, int features_size,
-							   int layer_size, bool* used_features, int* tuple_split_id, float* tuple_feature, int* sorted_tests_ids)
-{
-	int x = blockIdx.x * blockDim.x + threadIdx.x;
-	int y = blockIdx.y * blockDim.y + threadIdx.y;
-	if (y < features_size && x < layer_size && !used_features[y])
-	{
-		int node_id = layer_size - 1 + x;
-		node cur_node = nodes[node_id];
-		if (!cur_node.is_exists || cur_node.is_leaf)
-		{
-			return;
-		}
-		for (int i = 0; i < tests_size; i++)
-		{
-			my_pair p1 = pre_errors[y * tests_size + i];
-			int id = p1.sorted_tests_id;
-			//my_tuple t1 = sorted_tests[y * tests_size + id];
-			//my_tuple t2;
-			float t1_f = tuple_feature[y * tests_size + id];
-			float t2_f;
-			if ((tuple_split_id[y * tests_size + id] >> x) & 1)
-			{
-				int j = id + 1;
-				while (j < tests_size)
-				{
-					//t2 = sorted_tests[y * tests_size + j];
-					t2_f = tuple_feature[y * tests_size + j];
-					if ((tuple_split_id[y * tests_size + j] >> x) & 1)
-					{
-						break;
-					}
-					j++;
-				}
-				if (j == tests_size)
-				{
-					errors[y * layer_size + x] = p1.error;
-					split_values[y * layer_size + x] = t1_f + EPS;
-					sorted_tests_ids[y * layer_size + x] = id;
-					return;
-				}
-				if (t1_f != t2_f)
-				{
-					errors[y * layer_size + x] = p1.error;
-					split_values[y * layer_size + x] = (t1_f + t2_f) / 2.0;
-					sorted_tests_ids[y * layer_size + x] = id;
-					return;
-				}
-			}
-		}
-	}
-}
-
-__global__ void calc_min_error2(node* nodes, my_pair* pre_errors,
+__global__ void calc_min_error2(node* nodes, float* pre_errors,
 							   float* errors, float* split_values, int tests_size, int features_size,
 							   int layer_size, bool* used_features, int* tuple_split_id, float* tuple_feature, int* sorted_tests_ids)
 {
@@ -565,13 +467,12 @@ __global__ void calc_min_error2(node* nodes, my_pair* pre_errors,
 		int best_id;
 		for (int i = 0; i < tests_size; i++)
 		{
-			my_pair p1 = pre_errors[y * tests_size + i];
-			int id = p1.sorted_tests_id;
-			float t1_f = tuple_feature[y * tests_size + id];
+			float cur_error = pre_errors[y * tests_size + i];
+			float t1_f = tuple_feature[y * tests_size + i];
 			float t2_f;
-			if ((p1.error < best_error) && ((tuple_split_id[y * tests_size + id] >> x) & 1))
+			if ((cur_error < best_error) && ((tuple_split_id[y * tests_size + i] >> x) & 1))
 			{
-				int j = id + 1;
+				int j = i + 1;
 				while (j < tests_size)
 				{
 					t2_f = tuple_feature[y * tests_size + j];
@@ -583,16 +484,16 @@ __global__ void calc_min_error2(node* nodes, my_pair* pre_errors,
 				}
 				if (j == tests_size)
 				{
-					best_error = p1.error;
+					best_error = cur_error;
 					best_split_val = t1_f + EPS;
-					best_id = id;
+					best_id = i;
 					continue;
 				}
 				if (t1_f != t2_f)
 				{
-					best_error = p1.error;
+					best_error = cur_error;
 					best_split_val = (t1_f + t2_f) / 2.0;
-					best_id = id;
+					best_id = i;
 				}
 			}
 		}
@@ -662,10 +563,8 @@ __global__ void make_split_gpu(node* nodes, float* split_values,
 		int l_size = 0;
 		int r_size = cur_node.size;
 		int id = sorted_tests_ids[best_f * layer_size + x];
-		//my_tuple cur_my_tuple;
 		for (int i = 0; i <= id; i++)
 		{
-			//cur_my_tuple = sorted_tests[best_f * tests_size + i];
 			float ans = tuple_answer[best_f * tests_size + i];
 			int exists = (tuple_split_id[best_f * tests_size + i] >> x) & 1;
 			l_sum += exists * ans;
@@ -738,10 +637,8 @@ std::pair<int, float> tree::fill_layer()
 	fill_split_ids<<<grid, block>>>(thrust::raw_pointer_cast(&node_id_of_test[0]), thrust::raw_pointer_cast(&tuple_test_id[0]),
 		thrust::raw_pointer_cast(&tuple_split_id[0]), tests_size, features_size, layer_size);
 	cudaDeviceSynchronize();
-	thrust::device_vector<my_pair> pre_errors(tests_size * features_size);
-	
+	thrust::device_vector<float> pre_errors(tests_size * features_size, INF_INT);
 
-	block.x = BLOCK_SIZE;
 	grid.x = 1 + layer_size / BLOCK_SIZE;
 
 	cudaDeviceSynchronize();
@@ -756,18 +653,6 @@ std::pair<int, float> tree::fill_layer()
 	thrust::device_vector<float> split_values(layer_size * features_size, INF_INT);
 	thrust::device_vector<int> sorted_tests_ids(layer_size * features_size, 0);
 	cudaDeviceSynchronize();
-	/*gg = clock();
-	for (int i = 0; i < features_size; i++)
-	{
-		thrust::sort(pre_errors.begin() + i * tests_size, pre_errors.begin() + (i + 1) * tests_size);
-	}
-	cudaDeviceSynchronize();
-	gg = clock() - gg;
-	printf("sort: %f\n", (float)gg / CLOCKS_PER_SEC);
-	*/
-
-	block.x = BLOCK_SIZE;
-	grid.x = 1 + layer_size / BLOCK_SIZE;
 	cudaDeviceSynchronize();
 	gg = clock();
 	calc_min_error2<<<grid, block>>>(nodes, thrust::raw_pointer_cast(&pre_errors[0]),
@@ -780,22 +665,14 @@ std::pair<int, float> tree::fill_layer()
 
 	gg = clock();
 	thrust::replace(errors.begin(), errors.end(), INF_INT, 0);
-	/*for (int i = 0; i < features_size; i++)
-	{
-		errors[i * layer_size] = thrust::reduce(errors.begin() + i * layer_size,
-			errors.begin() + (i + 1) * layer_size, 0.0, thrust::plus<float>());
-		//std::cout << i << " # " << errors[i * layer_size] << std::endl;
-	}*/
 	block.x = 1;
 	grid.x = 1;
 	
 	my_reduce<<<grid, block>>>(thrust::raw_pointer_cast(&errors[0]), features_size, layer_size);
 	
-	
 	cudaDeviceSynchronize();
 	gg = clock() - gg;
 	printf("thrust rep: %f\n", (float)gg / CLOCKS_PER_SEC);
-
 
 	thrust::device_vector<int> best_feature(1);
 	thrust::device_vector<float> best_error(1);

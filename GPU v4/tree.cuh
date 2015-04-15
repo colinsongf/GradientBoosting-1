@@ -33,26 +33,6 @@ struct node_ptr
 	bool is_leaf;
 };
 
-struct my_tuple
-{
-	__host__ __device__ my_tuple(int test_id, int split_id, float feature, float answer);
-	__host__ __device__ my_tuple() {};
-	friend bool __host__ __device__ operator<(const my_tuple& lhs, const my_tuple& rhs);
-	int test_id;
-	int split_id;
-	float feature;
-	float answer;
-};
-
-struct my_pair
-{
-	__host__ __device__ my_pair(int sorted_tests_id, float error);
-	__host__ __device__ my_pair();
-	friend bool __host__ __device__ operator<(const my_pair& lhs, const my_pair& rhs);
-	int sorted_tests_id;
-	float error;
-};
-
 class tree
 {
 public:
