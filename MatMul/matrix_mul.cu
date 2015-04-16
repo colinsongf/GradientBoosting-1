@@ -7,8 +7,11 @@
 #include <thrust/device_vector.h>
 #include <thrust/host_vector.h>
 #include <thrust/sort.h>
+#include <thrust/copy.h>
 #include <cublas_v2.h>
 #include "matrix_mul.cuh"
+
+#define BLOCK_SIZE 8
 
 matrix_mul::matrix_mul(std::string a_file_name, std::string b_file_name, int a_size,
 		int b_size, int features_size)
@@ -30,6 +33,60 @@ struct comparator
     }
 };
 
+__global__ void select(float* c_device, int* ids_matrix, int n, int b_size, int a_actual_size)
+{
+	int x = blockIdx.x * blockDim.x + threadIdx.x;
+	if (x < a_actual_size)
+	{
+		int offset = x * b_size;
+		int l = 0;
+		int r = b_size - 1;
+		float temp_value;
+		int temp_id;
+		for(;;)
+		{
+			if (l != r)
+			{
+				temp_value = c_device[offset + (l + r) / 2];
+				c_device[offset + (l + r) / 2] = c_device[offset + r];
+				c_device[offset + r] = temp_value;
+				
+				temp_id = ids_matrix[offset + (l + r) / 2];
+				ids_matrix[offset + (l + r) / 2] = ids_matrix[offset + r];
+				ids_matrix[offset + r] = temp_id;
+			}
+			float mid = c_device[r];
+			int i = l - 1;
+			for (int j = l; j <= r; j++) 
+			{
+				if (c_device[j] >= mid)
+				{
+					i++;
+					temp_value = c_device[offset + i];
+					c_device[offset + i] = c_device[offset + j];
+					c_device[offset + j] = temp_value;
+					
+					temp_id = ids_matrix[offset + i];
+					ids_matrix[offset + i] = ids_matrix[offset + j];
+					ids_matrix[offset + j] = temp_id;
+				}
+			}
+			if (i < n)
+			{
+				l = i + 1;
+			}
+			else if (i > n)
+			{
+				r = i - 1;
+			}
+			else
+			{
+				return;
+			}
+		}
+	}
+} 
+
 void matrix_mul::calculate(std::string output_file_name, int n, int block_size)
 {
 	std::ifstream a_stream(a_file_name.c_str());
@@ -39,7 +96,7 @@ void matrix_mul::calculate(std::string output_file_name, int n, int block_size)
 	std::vector<float> b(b_size * features_size);
 	char const tab_delim = '\t';
 	std::string line;
-	thrust::device_vector<int> b_ids_device;
+	thrust::host_vector<int> b_ids_host;
 	for (int i = 0; i < b_size; i++) //read "b" matrix
 	{
 		if (i % 1000000 == 0)
@@ -56,7 +113,7 @@ void matrix_mul::calculate(std::string output_file_name, int n, int block_size)
 			getline(line_stream, value, tab_delim);
 			b[j * b_size + i] = atof(value.c_str());
 		}
-		b_ids_device.push_back(i);
+		b_ids_host.push_back(i);
 	}
 	thrust::device_vector<float> b_device(b);
 
@@ -70,11 +127,12 @@ void matrix_mul::calculate(std::string output_file_name, int n, int block_size)
 	for (int id = 0; id < parts; id++) //read "a" matrix by parts
 	{
 		printf("Part %d of %d\n", id, parts);
-		cudaDeviceSyncronize();
+		cudaDeviceSynchronize();
 		clock_t time = clock();
 		int a_actual_size = (id == parts - 1) ? (a_size % block_size) : block_size;
 		std::vector<int> a_ids;
 		std::vector<float> a(a_actual_size * features_size);
+		thrust::host_vector<int> ids_matrix_host(a_actual_size * b_size);
 		for (int i = 0; (i < block_size) && (id * block_size + i < a_size); i++)
 		{
 			getline(a_stream, line);
@@ -87,11 +145,15 @@ void matrix_mul::calculate(std::string output_file_name, int n, int block_size)
 				getline(line_stream, value, tab_delim);
 				a[i * features_size + j] = (float)atof(value.c_str());
 			}
+			thrust::copy(b_ids_host.begin(), b_ids_host.end(), ids_matrix_host.begin() + i * b_size);
+			
 		}
 		thrust::device_vector<float> a_device(a);
 		thrust::device_vector<float> c_device(a_actual_size * b_size);
+		thrust::device_vector<int> ids_matrix(ids_matrix_host);
 		
-		cudaDeviceSyncronize();
+		
+		cudaDeviceSynchronize();
 		time = clock() - time;
 		printf("read a: %f sec\n", (float)time / CLOCKS_PER_SEC);
 		
@@ -102,7 +164,7 @@ void matrix_mul::calculate(std::string output_file_name, int n, int block_size)
 				thrust::raw_pointer_cast(&b_device[0]), b_size, thrust::raw_pointer_cast(&a_device[0]),
 				features_size, &beta, thrust::raw_pointer_cast(&c_device[0]), b_size);
 				
-		cudaDeviceSyncronize();
+		cudaDeviceSynchronize();
 		time = clock() - time;
 		printf("matrix mul: %f sec\n", (float)time / CLOCKS_PER_SEC);
 		
@@ -113,15 +175,22 @@ void matrix_mul::calculate(std::string output_file_name, int n, int block_size)
 		clock_t sort_time = 0;
 		clock_t temp_time;
 		
+		dim3 block(BLOCK_SIZE, 1);
+		dim3 grid(1 + a_actual_size / BLOCK_SIZE, 1);
+		
+		select<<<grid, block>>>(thrust::raw_pointer_cast(&c_device[0]), thrust::raw_pointer_cast(&ids_matrix[0]), n, b_size, a_actual_size);
+		cudaDeviceSynchronize();
+		
+		
 		for (int i = 0; i < a_actual_size; i++) //select "n" best ids
 		{
-			cudaDeviceSyncronize();
+			cudaDeviceSynchronize();
 			temp_time = clock();
-			thrust::sort(b_ids_device.begin(), b_ids_device.end(), comparator(thrust::raw_pointer_cast(&c_device[0]), i, b_size));
-			cudaDeviceSyncronize();
+			thrust::sort(ids_matrix.begin() + i * b_size, ids_matrix.begin() + i * b_size + n, comparator(thrust::raw_pointer_cast(&c_device[0]), i, b_size));
+			cudaDeviceSynchronize();
 			temp_time = clock() - temp_time;
 			sort_time += temp_time;
-			thrust::host_vector<int> sorted_ids(b_ids_device);
+			thrust::host_vector<int> sorted_ids(ids_matrix.begin() + i * b_size, ids_matrix.begin() + i * b_size + n);
 			output_stream << a_ids[i];
 			for (int j = 0; j < n; j++)
 			{
@@ -130,10 +199,10 @@ void matrix_mul::calculate(std::string output_file_name, int n, int block_size)
 			output_stream << std::endl;
 		}
 		
-		cudaDeviceSyncronize();
+		cudaDeviceSynchronize();
 		time = clock() - time;
 		printf("only sorting: %f sec\n", (float)sort_time / CLOCKS_PER_SEC);
-		printf("sorting with output: %f sec\n\n", (float)time / CLOCKS_PER_SEC);
+		printf("sorting with select: %f sec\n\n", (float)time / CLOCKS_PER_SEC);
 		
 	}
 	status = cublasDestroy(handle);
