@@ -7,15 +7,11 @@
 #include <limits>
 #include <thrust/device_vector.h>
 #include <thrust/host_vector.h>
-#include <thrust/sort.h>
-#include <thrust/copy.h>
 #include <cublas_v2.h>
 #include <cub/cub.cuh>
 #include <cub/util_allocator.cuh>
 #include <cub/device/device_radix_sort.cuh>
 #include "matrix_mul.cuh"
-
-using namespace cub;
 
 matrix_mul::matrix_mul(std::string a_file_name, std::string b_file_name, int a_size,
 	int b_size, int features_size) : a_file_name(a_file_name), b_file_name(b_file_name),
@@ -50,6 +46,9 @@ void matrix_mul::calculate(std::string output_file_name, int n, int block_size)
 		b_ids_device.push_back(i);
 	}
 	thrust::device_vector<float> b_device(b);
+	thrust::device_vector<float> sorted_values_d(b_size);
+	thrust::device_vector<int> sorted_ids_d(b_size);
+	cub::CachingDeviceAllocator g_allocator(true);
 	
 	cublasHandle_t handle;
 	cublasStatus_t status = cublasCreate(&handle);
@@ -62,10 +61,6 @@ void matrix_mul::calculate(std::string output_file_name, int n, int block_size)
 	clock_t total_time;
 	clock_t io_time;
 	clock_t sort_time;
-	
-	thrust::device_vector<float> sorted_values_d(b_size);
-	thrust::device_vector<int> sorted_ids_d(b_size);
-	cub::CachingDeviceAllocator g_allocator(true);
 	
 	size_t temp_storage_bytes;
 	void* d_temp_storage;
@@ -117,17 +112,14 @@ void matrix_mul::calculate(std::string output_file_name, int n, int block_size)
 		time_temp = clock() - time_temp;
 		mul_time += time_temp;
 		
-		//print_c_matrix(thrust::raw_pointer_cast(&c_device[0]), a_actual_size);
-		
 		if (id == 0 || id == (parts - 1)) //allocate memory for sort
 		{
-			//cudaFree(d_temp_storage);
+			g_allocator.DeviceFree(d_temp_storage);
 			temp_storage_bytes = 0;
 			d_temp_storage = NULL;
 			cub::DeviceRadixSort::SortPairsDescending(d_temp_storage, temp_storage_bytes, thrust::raw_pointer_cast(&c_device[0]),
 				thrust::raw_pointer_cast(&sorted_values_d[0]), thrust::raw_pointer_cast(&b_ids_device[0]),
 				thrust::raw_pointer_cast(&sorted_ids_d[0]), b_size);
-			//cudaMalloc(&d_temp_storage, temp_storage_bytes);
 			g_allocator.DeviceAllocate(&d_temp_storage, temp_storage_bytes);
 		}
 		
@@ -158,6 +150,7 @@ void matrix_mul::calculate(std::string output_file_name, int n, int block_size)
 		time = clock() - time;
 		total_time += time;
 	}
+	g_allocator.DeviceFree(d_temp_storage);
 	fclose(fout);
 	cudaFree(d_temp_storage);
 	status = cublasDestroy(handle);
@@ -177,3 +170,4 @@ void matrix_mul::print_c_matrix(float* c_device, int a_actual_size)
 	}
 	free(c);
 }
+
