@@ -7,6 +7,7 @@
 #include <limits>
 #include <thrust/device_vector.h>
 #include <thrust/host_vector.h>
+#include <thrust/sort.h>
 #include <cublas_v2.h>
 #include <cub/cub.cuh>
 #include <cub/util_allocator.cuh>
@@ -57,10 +58,10 @@ void matrix_mul::calculate(std::string output_file_name, int n, int block_size)
 	
 	int parts = a_size / block_size + 1;
 	
-	clock_t mul_time;
-	clock_t total_time;
-	clock_t io_time;
-	clock_t sort_time;
+	clock_t mul_time = 0;
+	clock_t total_time = 0;
+	clock_t io_time = 0;
+	clock_t sort_time = 0;
 	
 	size_t temp_storage_bytes;
 	void* d_temp_storage;
@@ -170,4 +171,3 @@ void matrix_mul::print_c_matrix(float* c_device, int a_actual_size)
 	}
 	free(c);
 }
-
